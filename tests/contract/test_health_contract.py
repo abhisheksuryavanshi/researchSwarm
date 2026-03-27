@@ -32,6 +32,7 @@ NO_HEALTH_TOOL = {
 
 @pytest.fixture
 async def health_tool(client: AsyncClient):
+    """Provide standard configured tools exposing native active health signals."""
     resp = await client.post("/tools/register", json=HEALTH_TOOL)
     assert resp.status_code == 201
     return resp.json()
@@ -39,6 +40,7 @@ async def health_tool(client: AsyncClient):
 
 @pytest.fixture
 async def no_health_tool(client: AsyncClient):
+    """Provide specifically blind tools deliberately leaving out health validations naturally."""
     resp = await client.post("/tools/register", json=NO_HEALTH_TOOL)
     assert resp.status_code == 201
     return resp.json()
@@ -46,6 +48,7 @@ async def no_health_tool(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_health_unknown_no_config(client: AsyncClient, no_health_tool):
+    """Ascertain unknown conditions render accurately targeting blindly operating tools securely."""
     resp = await client.get(f"/tools/{no_health_tool['tool_id']}/health")
     assert resp.status_code == 200
     data = resp.json()
@@ -56,12 +59,14 @@ async def test_health_unknown_no_config(client: AsyncClient, no_health_tool):
 
 @pytest.mark.asyncio
 async def test_health_404(client: AsyncClient):
+    """Deny arbitrary requests analyzing nonexistent application paths immediately."""
     resp = await client.get("/tools/nonexistent-tool/health")
     assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_health_unhealthy_connection_refused(client: AsyncClient, health_tool):
+    """Emulate external disconnections to formally gauge backend failure handling gracefully."""
     mock_client = AsyncMock()
     mock_client.get.side_effect = httpx.ConnectError("Connection refused")
     client._transport.app.state.http_client = mock_client  # type: ignore

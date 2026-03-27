@@ -39,6 +39,7 @@ FLOW_TOOLS = [
 
 @pytest.mark.asyncio
 async def test_register_search_bind_flow(client: AsyncClient):
+    """Integrate basic agent workflows natively connecting endpoint loops together continuously."""
     for tool in FLOW_TOOLS:
         resp = await client.post("/tools/register", json=tool)
         assert resp.status_code == 201, f"Failed to register {tool['tool_id']}: {resp.text}"
@@ -48,11 +49,9 @@ async def test_register_search_bind_flow(client: AsyncClient):
     results = search_resp.json()["results"]
     assert any(r["tool_id"] == "flow-financial-v1" for r in results)
 
-    search_resp2 = await client.get(
-        "/tools/search", params={"query": "calculate math numbers"}
-    )
-    assert search_resp2.status_code == 200
-    assert len(search_resp2.json()["results"]) >= 0
+    all_resp = await client.get("/tools/search")
+    assert all_resp.status_code == 200
+    assert len(all_resp.json()["results"]) >= len(FLOW_TOOLS)
 
     bind_resp = await client.get("/tools/flow-financial-v1/bind")
     assert bind_resp.status_code == 200

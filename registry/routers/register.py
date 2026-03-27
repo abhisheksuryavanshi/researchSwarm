@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,10 @@ logger = structlog.get_logger()
 
 
 def _tool_to_response(tool: Tool) -> dict:
+    """
+    Serialize a Tool model instance into a standard dictionary format.
+    Used consistently to structure the API responses.
+    """
     return {
         "tool_id": tool.tool_id,
         "name": tool.name,
@@ -36,23 +40,17 @@ def _tool_to_response(tool: Tool) -> dict:
 @router.post("/tools/register", response_model=ToolResponse, status_code=status.HTTP_201_CREATED)
 async def register_tool(
     payload: ToolCreateRequest,
-    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Create a new tool registration in the system database.
+    Rejects the request appropriately if the tool ID naturally exists.
+    """
     existing = await db.execute(select(Tool).where(Tool.tool_id == payload.tool_id))
     if existing.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Tool with id '{payload.tool_id}' already exists.",
-        )
-
-    try:
-        embedding = await request.app.state.embedding_provider.embed(payload.description)
-    except Exception as exc:
-        await logger.aerror("embedding_failed", tool_id=payload.tool_id, error=str(exc))
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Embedding provider unavailable.",
         )
 
     now = datetime.now(timezone.utc)
@@ -67,7 +65,6 @@ async def register_tool(
         output_schema=payload.output_schema,
         health_check=payload.health_check,
         cost_per_call=payload.cost_per_call,
-        embedding=embedding,
         created_at=now,
         updated_at=now,
     )
@@ -87,16 +84,18 @@ async def register_tool(
 async def update_tool(
     tool_id: str,
     payload: ToolUpdateRequest,
-    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Patch an existing tool's descriptive and configuration properties.
+    Fails systematically with a 404 if the target tool id is absent.
+    """
     result = await db.execute(select(Tool).where(Tool.tool_id == tool_id))
     tool = result.scalar_one_or_none()
     if tool is None:
         raise HTTPException(status_code=404, detail=f"Tool '{tool_id}' not found.")
 
     update_data = payload.model_dump(exclude_unset=True)
-    description_changed = "description" in update_data
 
     if "capabilities" in update_data:
         for cap in list(tool.capabilities):
@@ -107,12 +106,6 @@ async def update_tool(
 
     for field, value in update_data.items():
         setattr(tool, field, value)
-
-    if description_changed:
-        try:
-            tool.embedding = await request.app.state.embedding_provider.embed(tool.description)
-        except Exception as exc:
-            await logger.aerror("re_embedding_failed", tool_id=tool_id, error=str(exc))
 
     tool.updated_at = datetime.now(timezone.utc)
     await db.flush()
@@ -127,6 +120,10 @@ async def delete_tool(
     tool_id: str,
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Logically soft-delete a designated tool by deprecating its status.
+    Effectively prevents further use without erasing historical usage logging data.
+    """
     result = await db.execute(select(Tool).where(Tool.tool_id == tool_id))
     tool = result.scalar_one_or_none()
     if tool is None:

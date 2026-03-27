@@ -17,6 +17,7 @@ STATS_TOOL = {
 
 @pytest.fixture
 async def stats_tool(client: AsyncClient):
+    """Establish fresh verifiable tool instance strictly for aggregating isolated analytical tests."""
     resp = await client.post("/tools/register", json=STATS_TOOL)
     assert resp.status_code == 201
     return resp.json()
@@ -24,6 +25,7 @@ async def stats_tool(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_stats_zeroed_metrics(client: AsyncClient, stats_tool):
+    """Assert completely fresh applications report exactly zeroed statistics across metrics dimensions universally."""
     resp = await client.get("/tools/stats", params={"tool_id": stats_tool["tool_id"]})
     assert resp.status_code == 200
     data = resp.json()
@@ -39,6 +41,7 @@ async def test_stats_zeroed_metrics(client: AsyncClient, stats_tool):
 
 @pytest.mark.asyncio
 async def test_stats_all_tools(client: AsyncClient, stats_tool):
+    """Ensure fetching global statistics encompasses standard seeded instances seamlessly."""
     resp = await client.get("/tools/stats")
     assert resp.status_code == 200
     data = resp.json()

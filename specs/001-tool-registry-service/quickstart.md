@@ -3,19 +3,17 @@
 ## Prerequisites
 
 - Python 3.11+
-- Docker & Docker Compose (for local PostgreSQL with pgvector)
-- ~200MB disk for the `all-MiniLM-L6-v2` embedding model (local dev only,
-  downloaded on first run)
+- Docker & Docker Compose (for local MySQL)
 
 ## Setup (Local Development)
 
 ### 1. Start infrastructure
 
 ```bash
-docker compose up -d postgres
+docker compose up -d mysql
 ```
 
-This starts PostgreSQL 16 with the `pgvector` extension pre-installed.
+This starts MySQL 8.0.
 
 ### 2. Install dependencies
 
@@ -35,35 +33,18 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Key variables for **local development** (no API keys needed):
+Key variables for **local development**:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/researchswarm
-EMBEDDING_PROVIDER=local
+DATABASE_URL=mysql+aiomysql://root:root@localhost:3306/researchswarm
 LOG_LEVEL=INFO
 ```
 
-For **deployed environments** (AWS RDS + Google GenAI):
+For **deployed environments** (AWS RDS):
 
 ```env
-DATABASE_URL=postgresql+asyncpg://user:pass@your-rds-instance.region.rds.amazonaws.com:5432/researchswarm
-EMBEDDING_PROVIDER=google
-GOOGLE_API_KEY=your-google-genai-api-key
+DATABASE_URL=mysql+aiomysql://user:pass@your-rds-instance.region.rds.amazonaws.com:3306/researchswarm
 LOG_LEVEL=INFO
-```
-
-Alternative providers:
-
-```env
-# OpenAI embeddings (also works with Cursor API key)
-EMBEDDING_PROVIDER=openai
-OPENAI_API_KEY=your-openai-or-cursor-api-key
-OPENAI_API_BASE=https://api.openai.com/v1  # or Cursor's endpoint
-
-# LLM provider for agents (Phase 2+, configured via LiteLLM)
-LLM_MODEL=gemini/gemini-2.0-flash       # Google GenAI (free tier)
-# LLM_MODEL=gpt-4o                      # OpenAI
-# LLM_MODEL=claude-3-5-sonnet-20241022  # Anthropic
 ```
 
 ### 4. Run migrations
@@ -72,8 +53,7 @@ LLM_MODEL=gemini/gemini-2.0-flash       # Google GenAI (free tier)
 alembic upgrade head
 ```
 
-This creates the `tools`, `tool_capabilities`, and `tool_usage_logs` tables
-and enables the `pgvector` extension.
+This creates the `tools`, `tool_capabilities`, and `tool_usage_logs` tables.
 
 ### 5. Seed the registry
 
@@ -120,11 +100,11 @@ Expected: 201 with the tool object.
 # By capability
 curl "http://localhost:8000/tools/search?capability=financial_data"
 
-# By semantic query
-curl "http://localhost:8000/tools/search?query=parse+SEC+filings"
+# All tools (for passing full catalog to agent)
+curl "http://localhost:8000/tools/search"
 ```
 
-Expected: Ranked list of matching tools.
+Expected: List of matching tools.
 
 ### Bind a tool
 
@@ -180,24 +160,22 @@ FastAPI auto-generates interactive docs:
 
 ## AWS Deployment
 
-### RDS PostgreSQL Setup
+### RDS MySQL Setup
 
-1. Create an RDS PostgreSQL 16 instance (`db.t3.micro` for free tier).
-2. Enable the `pgvector` extension (Alembic migration handles
-   `CREATE EXTENSION vector` automatically).
-3. Set `DATABASE_URL` to the RDS connection string.
+1. Create an RDS MySQL 8.0 instance (`db.t3.micro` for free tier).
+2. Set `DATABASE_URL` to the RDS connection string.
 
 ### EC2 Deployment
 
 1. Launch an EC2 `t3.micro` or `t3.small` instance (Amazon Linux 2023).
 2. Install Python 3.11+, clone the repo, install dependencies.
-3. Set environment variables (RDS URL, Google GenAI API key).
+3. Set environment variables (RDS URL).
 4. Run with: `uvicorn registry.app:app --host 0.0.0.0 --port 8000`
 5. (Optional) Use systemd or supervisord for process management.
 
 ### Security Group Configuration
 
-- RDS: Allow inbound PostgreSQL (5432) from EC2 security group only.
+- RDS: Allow inbound MySQL (3306) from EC2 security group only.
 - EC2: Allow inbound HTTP (8000) from your IP / load balancer.
 - Both in the same VPC for private networking.
 
@@ -205,9 +183,5 @@ FastAPI auto-generates interactive docs:
 
 | Problem | Solution |
 |---------|----------|
-| `pgvector` extension not found | Use the `pgvector/pgvector:pg16` Docker image (local) or verify RDS PostgreSQL 16 (AWS). |
-| Embedding model download fails | Check internet connectivity. Model is cached in `~/.cache/huggingface/`. Only needed for `EMBEDDING_PROVIDER=local`. |
-| Google GenAI API errors | Verify `GOOGLE_API_KEY` is set. Check free tier quotas at https://ai.google.dev/. |
-| `asyncpg` connection refused | Verify PostgreSQL is running: `docker compose ps` (local) or check RDS endpoint + security groups (AWS). |
-| Migration fails | Ensure the database exists. Local: `docker compose exec postgres createdb researchswarm`. AWS: connect via psql to RDS and `CREATE DATABASE`. |
-| Cursor API key not working | Set `OPENAI_API_KEY` to your Cursor key and `OPENAI_API_BASE` to Cursor's endpoint URL. |
+| `aiomysql` connection refused | Verify MySQL is running: `docker compose ps` (local) or check RDS endpoint + security groups (AWS). |
+| Migration fails | Ensure the database exists. Local: `docker compose exec mysql mysql -uroot -proot -e "CREATE DATABASE IF NOT EXISTS researchswarm"`. AWS: connect via mysql client to RDS and `CREATE DATABASE`. |

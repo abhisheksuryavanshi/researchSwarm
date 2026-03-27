@@ -14,6 +14,10 @@ async def bind_tool(
     tool_id: str,
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Retrieve tool information tailored for agent binding operations.
+    Raises 404 if the tool is not found.
+    """
     result = await db.execute(select(Tool).where(Tool.tool_id == tool_id))
     tool = result.scalar_one_or_none()
     if tool is None:

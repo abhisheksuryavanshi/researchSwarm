@@ -23,6 +23,10 @@ async def check_health(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Actively ping a registered tool to assert its current operational status.
+    Updates the database with the result and overall latency metrics.
+    """
     result = await db.execute(select(Tool).where(Tool.tool_id == tool_id))
     tool = result.scalar_one_or_none()
     if tool is None:

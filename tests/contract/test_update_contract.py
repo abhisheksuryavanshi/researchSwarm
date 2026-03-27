@@ -17,6 +17,7 @@ TOOL_PAYLOAD = {
 
 @pytest.fixture
 async def registered_tool(client: AsyncClient):
+    """Bootstrap update requests strictly depending on active preexisting tool instances accurately."""
     resp = await client.post("/tools/register", json=TOOL_PAYLOAD)
     assert resp.status_code == 201
     return resp.json()
@@ -24,6 +25,7 @@ async def registered_tool(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_update_tool_200(client: AsyncClient, registered_tool):
+    """Verify targeted field alterations dynamically update corresponding elements natively."""
     response = await client.put(
         f"/tools/{registered_tool['tool_id']}",
         json={"name": "Updated Name"},
@@ -35,26 +37,29 @@ async def test_update_tool_200(client: AsyncClient, registered_tool):
 
 
 @pytest.mark.asyncio
-async def test_update_description_regenerates_embedding(client: AsyncClient, registered_tool):
+async def test_update_description(client: AsyncClient, registered_tool):
+    """Corroborate independent textual mutations reflecting properly without side effects."""
     response = await client.put(
         f"/tools/{registered_tool['tool_id']}",
-        json={"description": "A completely different description for testing re-embedding"},
+        json={"description": "A completely different description for testing updates"},
     )
     assert response.status_code == 200
     assert (
         response.json()["description"]
-        == "A completely different description for testing re-embedding"
+        == "A completely different description for testing updates"
     )
 
 
 @pytest.mark.asyncio
 async def test_update_tool_404(client: AsyncClient):
+    """Intercept modification directives aimed at ghost tools rejecting accordingly."""
     response = await client.put("/tools/nonexistent-tool", json={"name": "New Name"})
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_update_tool_422_invalid_fields(client: AsyncClient, registered_tool):
+    """Deny semantically noncompliant format additions predictably."""
     response = await client.put(
         f"/tools/{registered_tool['tool_id']}",
         json={"version": "not-semver"},
@@ -64,6 +69,7 @@ async def test_update_tool_422_invalid_fields(client: AsyncClient, registered_to
 
 @pytest.mark.asyncio
 async def test_partial_update_preserves_fields(client: AsyncClient, registered_tool):
+    """Guarantee unmentioned underlying record components persist firmly undamaged after patches."""
     response = await client.put(
         f"/tools/{registered_tool['tool_id']}",
         json={"name": "Partial Update"},

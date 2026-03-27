@@ -26,12 +26,14 @@ def test_tool_defaults():
 
 
 def test_tool_capability_fields():
+    """Verify ToolCapability fields assignment correctly persists basic attributes natively."""
     cap = ToolCapability(tool_id="test-v1", capability="web_search")
     assert cap.tool_id == "test-v1"
     assert cap.capability == "web_search"
 
 
 def test_tool_usage_log_fields():
+    """Verify ToolUsageLog captures the correct event fields including latency and success state."""
     log = ToolUsageLog(
         tool_id="test-v1",
         agent_id="researcher",

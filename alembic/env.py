@@ -16,6 +16,10 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
+    """
+    Execute database migrations in 'offline' mode.
+    Configures the context with just a URL and not an Engine, allowing migration generation without an active connection.
+    """
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -28,12 +32,20 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection):
+    """
+    Run migrations synchronously using the provided database connection.
+    Used internally to bridge the async-sync boundary safely.
+    """
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()
 
 
 async def run_async_migrations() -> None:
+    """
+    Asynchronously connect to the database and initiate the migration process.
+    Prepares a temporary synchronous execution block internally for Alembic compatibility.
+    """
     connectable = async_engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -45,6 +57,10 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
+    """
+    Execute database migrations in 'online' mode.
+    Triggers the entire asynchronous migration execution pipeline.
+    """
     asyncio.run(run_async_migrations())
 
 

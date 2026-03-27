@@ -17,6 +17,7 @@ VALID_TOOL_PAYLOAD = {
 
 @pytest.mark.asyncio
 async def test_register_tool_201(client: AsyncClient):
+    """Verify clean tool injections successfully bind returning identically valid responses."""
     response = await client.post("/tools/register", json=VALID_TOOL_PAYLOAD)
     assert response.status_code == 201
     data = response.json()
@@ -33,12 +34,14 @@ async def test_register_tool_201(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_register_tool_422_missing_fields(client: AsyncClient):
+    """Enforce strict field population preventing broken structural payloads systematically."""
     response = await client.post("/tools/register", json={"tool_id": "bad"})
     assert response.status_code == 422
 
 
 @pytest.mark.asyncio
 async def test_register_tool_422_invalid_tool_id(client: AsyncClient):
+    """Verify tool id formats properly fail when invalid characters enter directly."""
     payload = {**VALID_TOOL_PAYLOAD, "tool_id": "INVALID_ID!"}
     response = await client.post("/tools/register", json=payload)
     assert response.status_code == 422
@@ -46,21 +49,9 @@ async def test_register_tool_422_invalid_tool_id(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_register_tool_409_duplicate(client: AsyncClient):
+    """Assert unique constraints hold tight during repeat registrations synchronously."""
     payload = {**VALID_TOOL_PAYLOAD, "tool_id": "dup-tool-v1"}
     resp1 = await client.post("/tools/register", json=payload)
     assert resp1.status_code == 201
     resp2 = await client.post("/tools/register", json=payload)
     assert resp2.status_code == 409
-
-
-@pytest.mark.asyncio
-async def test_register_tool_503_embedding_failure(client: AsyncClient):
-    from unittest.mock import AsyncMock
-
-    provider = AsyncMock()
-    provider.embed.side_effect = RuntimeError("Embedding provider unavailable")
-    client._transport.app.state.embedding_provider = provider  # type: ignore
-
-    payload = {**VALID_TOOL_PAYLOAD, "tool_id": "embed-fail-v1"}
-    response = await client.post("/tools/register", json=payload)
-    assert response.status_code == 503

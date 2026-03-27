@@ -25,6 +25,7 @@ BIND_TOOL = {
 
 @pytest.fixture
 async def bound_tool(client: AsyncClient):
+    """Pre-register testing tool cleanly to prepare dependency states precisely beforehand."""
     resp = await client.post("/tools/register", json=BIND_TOOL)
     assert resp.status_code == 201
     return resp.json()
@@ -32,6 +33,7 @@ async def bound_tool(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_bind_200(client: AsyncClient, bound_tool):
+    """Verify tool metadata accurately translates effectively against bind structure requests."""
     resp = await client.get(f"/tools/{bound_tool['tool_id']}/bind")
     assert resp.status_code == 200
     data = resp.json()
@@ -46,5 +48,6 @@ async def test_bind_200(client: AsyncClient, bound_tool):
 
 @pytest.mark.asyncio
 async def test_bind_404(client: AsyncClient):
+    """Ensure fetching unknown applications returns accurate 404 absent indicators systematically."""
     resp = await client.get("/tools/nonexistent-tool/bind")
     assert resp.status_code == 404

@@ -17,6 +17,7 @@ DELETE_TOOL = {
 
 @pytest.fixture
 async def deletable_tool(client: AsyncClient):
+    """Configure ephemeral test application targeting lifecycle destruction verification properly."""
     resp = await client.post("/tools/register", json=DELETE_TOOL)
     assert resp.status_code == 201
     return resp.json()
@@ -24,6 +25,7 @@ async def deletable_tool(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_delete_tool_200(client: AsyncClient, deletable_tool):
+    """Assert successful removal deprecates correctly while signaling okay natively."""
     response = await client.delete(f"/tools/{deletable_tool['tool_id']}")
     assert response.status_code == 200
     data = response.json()
@@ -32,12 +34,14 @@ async def test_delete_tool_200(client: AsyncClient, deletable_tool):
 
 @pytest.mark.asyncio
 async def test_delete_tool_404(client: AsyncClient):
+    """Enforce rejecting false deletes querying unrelated instances cleanly."""
     response = await client.delete("/tools/nonexistent-tool")
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
 async def test_deprecated_tool_excluded_from_search(client: AsyncClient, deletable_tool):
+    """Ensure deleted tool entities transparently avoid future public visibility searches."""
     await client.delete(f"/tools/{deletable_tool['tool_id']}")
     search_resp = await client.get("/tools/search", params={"capability": "testing"})
     assert search_resp.status_code == 200
@@ -47,6 +51,7 @@ async def test_deprecated_tool_excluded_from_search(client: AsyncClient, deletab
 
 @pytest.mark.asyncio
 async def test_status_restorable_via_put(client: AsyncClient, deletable_tool):
+    """Assert soft-deleted applications reawaken via PUT modifications identically."""
     await client.delete(f"/tools/{deletable_tool['tool_id']}")
     restore_resp = await client.put(
         f"/tools/{deletable_tool['tool_id']}",

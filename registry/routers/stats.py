@@ -17,6 +17,10 @@ async def get_stats(
     since: datetime | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Compile comprehensive performance and reliability statistics for invoked tools.
+    Supports filtering aggregations by target tool or historical time ranges.
+    """
     log_filters = []
     if since:
         log_filters.append(ToolUsageLog.invoked_at >= since)

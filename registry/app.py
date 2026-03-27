@@ -6,20 +6,17 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from registry.config import settings
-from registry.embeddings import get_embedding_provider
 from registry.middleware.logging import RequestLoggingMiddleware, configure_logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """
+    Manage the startup and shutdown lifecycle events for the FastAPI application.
+    Initializes logging and HTTP client on startup, and gracefully closes them on shutdown.
+    """
     configure_logging(settings.log_level)
     logger = structlog.get_logger()
-
-    app.state.embedding_provider = get_embedding_provider(settings)
-    await logger.ainfo(
-        "embedding_provider_initialized",
-        provider=settings.embedding_provider.value,
-    )
 
     app.state.http_client = httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=2.0))
     await logger.ainfo("http_client_initialized")
@@ -31,6 +28,10 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
+    """
+    Create and configure the FastAPI application instance for the Tool Registry Service.
+    Registers middleware, routers, and global exception handlers.
+    """
     application = FastAPI(
         title="Tool Registry Service",
         description="Central tool catalog for the Research Swarm system",
@@ -50,6 +51,10 @@ def create_app() -> FastAPI:
 
     @application.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
+        """
+        Handle all uncaught exceptions globally gracefully.
+        Logs the error details and returns a standard 500 Internal Server Error response.
+        """
         logger = structlog.get_logger()
         await logger.aerror("unhandled_exception", error=str(exc), exc_info=True)
         return JSONResponse(

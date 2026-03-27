@@ -3,17 +3,17 @@
 **Feature Branch**: `001-tool-registry-service`
 **Created**: 2026-03-26
 **Status**: Draft
-**Input**: User description: "Build the Tool Registry Service — a standalone FastAPI service with PostgreSQL backing that supports tool registration, semantic search over tool descriptions, runtime binding, health checks, and usage stats."
+**Input**: User description: "Build the Tool Registry Service — a standalone FastAPI service with MySQL backing that supports tool registration, capability-based search, runtime binding, health checks, and usage stats."
 
 ## Clarifications
 
 ### Session 2026-03-26
 
-- Q: Can registered tools be updated, or are they immutable? → A: Add `PUT /tools/{id}` endpoint that updates metadata in-place (re-embeds description if changed).
-- Q: What happens when the cloud embedding provider is unreachable during registration? → A: Registration fails with 503. Tool is NOT persisted without an embedding. Operator retries.
+- Q: Can registered tools be updated, or are they immutable? → A: Add `PUT /tools/{id}` endpoint that updates metadata in-place.
 - Q: Can tools be deleted from the registry? → A: Soft delete. `DELETE /tools/{id}` sets `status = 'deprecated'`. Tool remains in DB (preserves usage log integrity) but is excluded from search. Reversible via `PUT`.
 - Q: Should tool_usage_logs have a retention policy? → A: No retention in v1. Logs grow unbounded. Acceptable at current scale (~200 tools, low invocation volume). Revisit if storage becomes a concern.
 - Q: Should the API use a version prefix (e.g., /v1/tools/...)? → A: No path prefix — it pollutes URLs for an internal service. Keep paths as `/tools/...`. If versioning is ever needed, use a query param.
+- Q: Why not use vector embeddings / semantic search for tool discovery? → A: At the expected scale (~20-50 tools), all tool definitions fit easily in a single LLM prompt. The LLM is a better tool selector than cosine similarity. Capability-tag filtering covers the narrowing use case. Vector search adds disproportionate complexity (pgvector, embedding providers, re-embedding on updates) for negligible benefit at this scale.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -44,32 +44,28 @@ tool by ID and confirm all fields match.
 
 ---
 
-### User Story 2 — Semantic Tool Search (Priority: P1)
+### User Story 2 — Tool Search & Listing (Priority: P1)
 
 An agent needs a capability (e.g., "financial data extraction") and queries
-the registry. The registry searches by capability tags and semantic
-similarity over tool descriptions, returning ranked results.
+the registry. The registry filters by capability tags, returning matching
+tools. Agents can also list all tools to pass the full catalog to the LLM
+for tool selection.
 
-**Why this priority**: Search is the primary read path — the mechanism by
-which agents discover tools at runtime. Equal priority with registration
-because both are needed for the core loop.
+**Why this priority**: Search/listing is the primary read path — the
+mechanism by which agents discover tools at runtime. Equal priority with
+registration because both are needed for the core loop.
 
 **Independent Test**: Seed 5+ tools, search by capability tag, verify
-matching tools are returned. Search by natural language query, verify
-semantic ranking is sensible.
+matching tools are returned. List all tools, verify complete catalog returned.
 
 **Acceptance Scenarios**:
 
 1. **Given** 5 registered tools, **When** `GET /tools/search?capability=financial_data`
    is called, **Then** only tools with the `financial_data` capability tag
-   are returned, ordered by relevance.
-2. **Given** 5 registered tools, **When** `GET /tools/search?query=parse SEC filings`
-   is called, **Then** tools are returned ranked by semantic similarity to
-   the query, with the SEC parser ranked highest.
-3. **Given** both `capability` and `query` params, **When** search is called,
-   **Then** results are filtered by capability first, then ranked by semantic
-   similarity within that subset.
-4. **Given** a search with no matches, **When** called, **Then** an empty
+   are returned.
+2. **Given** 5 registered tools, **When** `GET /tools/search` is called
+   with no filters, **Then** all active tools are returned.
+3. **Given** a search with no matches, **When** called, **Then** an empty
    list is returned (not an error).
 
 ---
@@ -176,16 +172,9 @@ in search results and can be bound.
 
 - What happens when a tool's endpoint URL is malformed at registration time?
   422 with a validation error — URLs MUST be validated via Pydantic.
-- What happens when the embedding provider fails during registration?
-  503 with structured error log — registration MUST NOT succeed with a
-  missing embedding vector. The tool is not persisted. Operator retries.
-  This applies to both `POST /tools/register` and `PUT /tools/{id}` when
-  description changes.
-- What happens when `pgvector` similarity search returns no results above
-  a threshold? Return an empty list, not an error.
 - What happens when multiple tools share identical capability tags but
-  different descriptions? Semantic search MUST differentiate them by
-  description embedding similarity.
+  different descriptions? Both are returned; the consuming agent (LLM)
+  decides which is most appropriate based on the full tool definitions.
 - What happens when a tool is registered with an empty `capabilities` list?
   Allowed — the tool can still be found via semantic search on description.
 - What happens when `PUT /tools/{id}` is called with a partial payload?
@@ -199,14 +188,11 @@ in search results and can be bound.
 - **FR-001**: System MUST accept tool registrations via `POST /tools/register`
   with validated Pydantic schemas.
 - **FR-002**: System MUST store tool metadata, capability tags, and input/output
-  schemas in PostgreSQL.
-- **FR-003**: System MUST embed tool descriptions at registration time via a
-  pluggable `EmbeddingProvider` (local `sentence-transformers` for dev, Google
-  GenAI `text-embedding-004` for deployed environments, OpenAI as alternative)
-  and store vectors in pgvector. Provider is selected via `EMBEDDING_PROVIDER`
-  env var.
-- **FR-004**: System MUST support semantic search via
-  `GET /tools/search?capability=X&query=Y` with pgvector cosine similarity.
+  schemas in MySQL.
+- **FR-003**: System MUST support tool search via
+  `GET /tools/search?capability=X` with capability-tag filtering. When no
+  filter is provided, all active tools are returned (enabling agents to
+  receive the full catalog for LLM-based tool selection).
 - **FR-005**: System MUST return LangChain-compatible tool definitions via
   `GET /tools/{id}/bind`.
 - **FR-006**: System MUST proxy health checks to registered tool endpoints
@@ -223,8 +209,8 @@ in search results and can be bound.
 - **FR-012**: System MUST support updating existing tools via
   `PUT /tools/{id}`. All mutable fields (name, description, capabilities,
   input/output schemas, endpoint, version, health_check, cost_per_call) are
-  replaceable. If `description` changes, the embedding MUST be regenerated.
-  Returns 200 on success, 404 if tool not found, 422 on validation errors.
+  replaceable. Returns 200 on success, 404 if tool not found, 422 on
+  validation errors.
 - **FR-013**: System MUST support soft-deleting tools via
   `DELETE /tools/{id}`. This sets `status = 'deprecated'`. The tool row and
   usage logs are preserved. Deprecated tools are excluded from search results.
@@ -248,8 +234,7 @@ in search results and can be bound.
   in the registry.
 - **SC-002**: `GET /tools/{id}/bind` returns a valid LangChain-compatible
   definition in < 200ms.
-- **SC-003**: `POST /tools/register` validates, persists, and embeds in
-  < 2 seconds.
+- **SC-003**: `POST /tools/register` validates and persists in < 500ms.
 - **SC-004**: Seeded registry contains at least 5 tools with distinct
   capability tags and valid health endpoints.
 - **SC-005**: Contract tests cover all 5 endpoint request/response schemas.
@@ -257,14 +242,9 @@ in search results and can be bound.
 
 ## Assumptions
 
-- **Local dev**: PostgreSQL is available via Docker Compose
-  (`pgvector/pgvector:pg16` image). No cloud API keys required — local
-  `sentence-transformers` used for embeddings.
-- **Deployed**: PostgreSQL is AWS RDS PostgreSQL 16 with the `pgvector`
-  extension enabled. Service runs on EC2. Embeddings via Google GenAI
-  (free tier) or OpenAI API.
-- The `pgvector` extension is available in both the Docker image and AWS
-  RDS PostgreSQL 16.
+- **Local dev**: MySQL is available via Docker Compose (`mysql:8.0`
+  image). No cloud API keys required.
+- **Deployed**: MySQL is AWS RDS MySQL 8.0. Service runs on EC2.
 - LLM provider for agents (Phase 2+) is Google GenAI by default (generous
   free tier for Gemini 2.0 Flash). Can switch to OpenAI (Cursor API key
   compatible) or Anthropic via LiteLLM config. No code changes needed.

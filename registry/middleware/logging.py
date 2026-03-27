@@ -8,6 +8,10 @@ from starlette.responses import Response
 
 
 def configure_logging(log_level: str = "INFO") -> None:
+    """
+    Configure structured JSON logging for the application.
+    Sets up processors for timestamps, log levels, and exceptions.
+    """
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
@@ -27,7 +31,15 @@ def configure_logging(log_level: str = "INFO") -> None:
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware that uniquely traces and systematically logs every HTTP request.
+    Records duration, status codes, and path details.
+    """
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        """
+        Intercept the incoming request to inject trace identifiers and log its lifecycle.
+        Assures each API call is accurately measured and monitored.
+        """
         trace_id = request.headers.get("x-trace-id", str(uuid.uuid4()))
         session_id = request.headers.get("x-session-id", "")
 

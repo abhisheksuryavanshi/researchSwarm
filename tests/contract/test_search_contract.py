@@ -31,6 +31,7 @@ TOOLS = [
 
 @pytest.fixture
 async def seeded_tools(client: AsyncClient):
+    """Prepare multi-record tool arrays directly ensuring stable environments actively."""
     for tool in TOOLS:
         resp = await client.post("/tools/register", json=tool)
         assert resp.status_code == 201
@@ -39,6 +40,7 @@ async def seeded_tools(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_search_by_capability(client: AsyncClient, seeded_tools):
+    """Target capability subsets explicitly analyzing isolated results efficiently."""
     resp = await client.get("/tools/search", params={"capability": "web_search"})
     assert resp.status_code == 200
     data = resp.json()
@@ -47,38 +49,26 @@ async def test_search_by_capability(client: AsyncClient, seeded_tools):
 
 
 @pytest.mark.asyncio
-async def test_search_by_query(client: AsyncClient, seeded_tools):
-    resp = await client.get("/tools/search", params={"query": "financial data analysis"})
+async def test_search_all_tools(client: AsyncClient, seeded_tools):
+    """Guarantee global fetching effectively produces unclipped full scale indexes automatically."""
+    resp = await client.get("/tools/search")
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data["results"], list)
-    assert data["query"] == "financial data analysis"
-
-
-@pytest.mark.asyncio
-async def test_search_combined(client: AsyncClient, seeded_tools):
-    resp = await client.get(
-        "/tools/search",
-        params={"capability": "web_search", "query": "general knowledge"},
-    )
-    assert resp.status_code == 200
+    assert data["total"] >= len(TOOLS)
 
 
 @pytest.mark.asyncio
 async def test_search_empty_results(client: AsyncClient):
+    """Guarantee isolated terms uniquely extract correctly avoiding unrelated noise safely."""
     resp = await client.get("/tools/search", params={"capability": "nonexistent_cap"})
     assert resp.status_code == 200
     assert resp.json()["results"] == []
 
 
 @pytest.mark.asyncio
-async def test_search_422_no_params(client: AsyncClient):
-    resp = await client.get("/tools/search")
-    assert resp.status_code == 422
-
-
-@pytest.mark.asyncio
 async def test_search_limit_parameter(client: AsyncClient, seeded_tools):
+    """Bind boundary caps assertively blocking expansive oversized queries effectively."""
     resp = await client.get("/tools/search", params={"capability": "web_search", "limit": 1})
     assert resp.status_code == 200
     assert len(resp.json()["results"]) <= 1

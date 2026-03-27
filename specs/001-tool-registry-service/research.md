@@ -5,90 +5,55 @@
 
 ## Research Tasks & Decisions
 
-### RT-001: Embedding Provider for Semantic Search
+### RT-001: Tool Discovery Strategy (Simplified)
 
-**Decision**: Pluggable embedding provider behind an `EmbeddingProvider`
-interface, with three backends:
-
-| Backend | Config value | Dimensions | Use case |
-|---------|-------------|-----------|----------|
-| `sentence-transformers/all-MiniLM-L6-v2` | `local` | 384 | Local dev, CI, offline |
-| Google GenAI `text-embedding-004` | `google` | 768 | Default for testing & production (free tier) |
-| OpenAI `text-embedding-3-small` | `openai` | 1536 | Alternative production provider |
+**Decision**: Capability-tag filtering via SQL + full catalog listing.
+No vector embeddings or semantic search.
 
 **Rationale**:
-- The registry MUST work in local dev without API keys (constitution
-  Principle II — layered independence). Local `sentence-transformers`
-  satisfies this.
-- For deployed environments, Google GenAI's embedding API has a generous
-  free tier (~1500 requests/minute) making it ideal for testing and
-  early production. The `google-genai` Python SDK is lightweight.
-- OpenAI and Anthropic (via proxy) are supported as alternatives for teams
-  that already have those API keys.
-- The `EmbeddingProvider` interface is a simple protocol: `embed(text) →
-  list[float]`. Swapping providers requires only a config change
-  (`EMBEDDING_PROVIDER=google`), no code changes.
-- pgvector column uses `VECTOR(768)` as the default dimension (Google
-  GenAI's output size). When using local/OpenAI, vectors are
-  padded/truncated or the column is provisioned at init time based on
-  the configured provider's dimension.
+- At the expected scale (~20-50 tools), all tool definitions fit easily
+  in a single LLM prompt (200-500 tokens per tool × 50 tools = ~25K tokens,
+  well within modern 128K+ context windows).
+- The LLM is a better tool selector than cosine similarity — it understands
+  intent, context, and subtle distinctions between tools.
+- Capability-tag filtering (`WHERE capability = X`) covers the narrowing
+  use case without any embedding infrastructure.
+- Eliminates 3 embedding provider backends
+  (sentence-transformers, Google GenAI, OpenAI), re-embedding on updates,
+  503 handling for embedding failures, and vector dimension management.
+- If the tool catalog grows to 500+ tools in the future, semantic search
+  can be added then. YAGNI applies.
 
-**Alternatives considered**:
-- **Hardcoded single provider** — simpler but forces all environments to
-  use the same backend. Blocks offline development if cloud-only, or
-  blocks production quality if local-only.
-- `all-mpnet-base-v2` — slightly better local quality (768 dims) but 2x
-  the vector size and slower inference. Unnecessary when Google GenAI is
-  the production target.
-- **LiteLLM for embeddings** — LiteLLM supports embedding routing but
-  adds a heavy dependency for something achievable with a 20-line
-  interface.
+**Alternatives considered and deferred**:
+- **Vector embeddings + embedding providers** — full semantic search over tool
+  descriptions. Technically elegant but adds disproportionate complexity
+  for 20-50 tools. The embedding provider alone required 3 backends,
+  a pluggable interface, and cloud API key management.
+- **Qdrant / Pinecone / ChromaDB** — even heavier vector store options.
+  Not justified at any foreseeable scale for this use case.
 
-### RT-002: Vector Storage for Semantic Search
+### RT-002: ~~Vector Storage~~ (REMOVED)
 
-**Decision**: PostgreSQL with `pgvector` extension (AWS RDS PostgreSQL in
-deployed environments)
-
-**Rationale**:
-- Keeps everything in a single database — no separate vector store service
-  to deploy, configure, or maintain.
-- `pgvector` supports cosine similarity (`<=>` operator), L2 distance, and
-  inner product natively.
-- For the expected corpus size (~50-200 tools), exact search is fast enough.
-  IVFFlat or HNSW indexes can be added later if needed.
-- The `pgvector` Python package integrates cleanly with SQLAlchemy via a
-  custom `Vector` column type.
-- **AWS RDS PostgreSQL 16** supports pgvector natively (available as a
-  trusted extension since late 2023). No custom AMI or manual extension
-  installation required — just `CREATE EXTENSION vector`.
-
-**Alternatives considered**:
-- **Qdrant / Pinecone / Weaviate** — purpose-built vector DBs with better
-  scaling, but add a separate service dependency. Overkill for <1000 vectors.
-- **In-memory numpy array** — fastest but loses persistence across restarts
-  and doesn't scale to multi-instance deployment.
-- **ChromaDB** — lightweight but adds another embedded database; redundant
-  when PostgreSQL is already in the stack.
-- **Amazon OpenSearch with vector search** — managed service but adds a
-  second data store and doubles infra cost. Not justified for <1000 vectors.
+Superseded by RT-001 simplification. Vector storage is not needed when
+tool discovery is done via capability-tag filtering and the LLM selects
+from the full catalog.
 
 ### RT-003: SQLAlchemy Sync vs Async
 
-**Decision**: Async SQLAlchemy with `asyncpg` driver
+**Decision**: Async SQLAlchemy with `aiomysql` driver
 
 **Rationale**:
 - FastAPI is async-native; using sync SQLAlchemy would block the event loop
   on every database call, defeating the purpose of async.
-- `asyncpg` is the highest-performance PostgreSQL driver for Python async.
+- `aiomysql` is a well-maintained async MySQL driver for Python.
 - SQLAlchemy 2.0+ has first-class async support via `AsyncSession` and
   `create_async_engine`.
-- The `pgvector` package supports async SQLAlchemy.
 
 **Alternatives considered**:
-- **Sync SQLAlchemy with `psycopg2`** — simpler but blocks the event loop.
+- **Sync SQLAlchemy with `PyMySQL`** — simpler but blocks the event loop.
   Would require thread pool executors for every DB call, adding complexity
   and reducing throughput.
-- **Raw `asyncpg` without ORM** — maximum performance but loses SQLAlchemy's
+- **Raw `aiomysql` without ORM** — maximum performance but loses SQLAlchemy's
   schema management, migrations, and query builder. Not worth the tradeoff
   for a service with 3 tables.
 
@@ -151,10 +116,7 @@ constructor arguments.
 **Rationale**:
 - Standard migration tool for SQLAlchemy projects.
 - Supports auto-generation of migration scripts from model changes.
-- Async-compatible with `asyncpg`.
-- The `pgvector` extension creation (`CREATE EXTENSION vector`) is handled
-  in the initial migration.
-
+- Async-compatible with `aiomysql`.
 **Alternatives considered**:
 - **Manual SQL scripts** — simpler but error-prone and doesn't track applied
   state.
@@ -190,8 +152,7 @@ constructor arguments.
 ### RT-009: LLM Provider Strategy (Cross-Phase)
 
 **Decision**: Use LiteLLM as the unified LLM gateway for all agent LLM calls
-(Phase 2+). The registry itself does not make LLM calls — only embedding
-calls — but the provider abstraction pattern established here carries forward.
+(Phase 2+). The registry itself does not make any LLM or embedding calls.
 
 **Provider priority**:
 
@@ -229,15 +190,13 @@ calls — but the provider abstraction pattern established here carries forward.
 
 | Component | Local (dev) | AWS (deployed) |
 |-----------|------------|----------------|
-| PostgreSQL + pgvector | Docker Compose (`pgvector/pgvector:pg16`) | AWS RDS PostgreSQL 16 (pgvector extension) |
+| MySQL | Docker Compose (`mysql:8.0`) | AWS RDS MySQL 8.0 |
 | Registry service | `uvicorn` on localhost | EC2 instance (or ECS Fargate) |
 | Redis (Phase 5) | Docker Compose | Amazon ElastiCache |
 | Langfuse (Phase 4) | Docker Compose (self-hosted) | EC2 or Langfuse Cloud |
-| Embedding model (local) | In-process `sentence-transformers` | N/A (use Google GenAI API) |
 
 **Rationale**:
-- AWS RDS PostgreSQL 16 supports pgvector as a trusted extension. No custom
-  images required. `db.t3.micro` is free-tier eligible for 12 months.
+- AWS RDS MySQL 8.0 `db.t3.micro` is free-tier eligible for 12 months.
 - EC2 `t3.micro` (free tier) or `t3.small` is sufficient for the registry
   service in early phases. Can scale to ECS Fargate later.
 - The `DATABASE_URL` connection string is the only config difference between
@@ -246,17 +205,11 @@ calls — but the provider abstraction pattern established here carries forward.
   production. No changes to application code needed — only environment
   variables.
 
-**AWS RDS pgvector setup**:
-```sql
--- Run once after creating the RDS instance (handled by Alembic migration)
-CREATE EXTENSION IF NOT EXISTS vector;
-```
-
 **Alternatives considered**:
-- **AWS Aurora Serverless** — auto-scaling and pay-per-use but pgvector
-  support varies by version. Standard RDS is simpler and more predictable.
+- **AWS Aurora Serverless** — auto-scaling and pay-per-use but adds complexity.
+  Standard RDS is simpler and more predictable.
 - **GCP Cloud SQL** — equally capable but user prefers AWS.
-- **Self-managed EC2 PostgreSQL** — full control but loses managed backups,
+- **Self-managed EC2 MySQL** — full control but loses managed backups,
   patching, and failover. Not worth the operational overhead.
 - **ECS Fargate from day one** — cleaner but adds Docker image registry
   (ECR), task definitions, and networking complexity. EC2 is simpler for

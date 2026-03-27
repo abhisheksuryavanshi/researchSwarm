@@ -10,22 +10,19 @@
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `capability` | string | No | Filter by capability tag (exact match). |
-| `query` | string | No | Natural language query for semantic search. |
 | `limit` | int | No | Max results (default: 10, max: 50). |
-| `min_score` | float | No | Minimum similarity score 0.0-1.0 (default: 0.3). |
 
-At least one of `capability` or `query` MUST be provided.
+When no `capability` is provided, all active tools are returned (enabling
+agents to receive the full catalog for LLM-based tool selection).
 
 ### Behavior
 
-1. If only `capability` is provided: filter tools by tag, return ordered by
+1. If `capability` is provided: filter tools by tag, return ordered by
    `created_at` descending.
-2. If only `query` is provided: embed the query, compute cosine similarity
-   against all active tool embeddings, return ranked by similarity score.
-3. If both are provided: filter by capability tag first, then rank the
-   filtered subset by semantic similarity to the query.
-4. Tools with `status = 'deprecated'` are always excluded.
-5. Tools with `status = 'unhealthy'` are excluded by default (discoverable
+2. If no filter is provided: return all active tools ordered by
+   `created_at` descending.
+3. Tools with `status = 'deprecated'` are always excluded.
+4. Tools with `status = 'unhealthy'` are excluded by default (discoverable
    only when explicitly queried by ID).
 
 ## Responses
@@ -42,7 +39,6 @@ At least one of `capability` or `query` MUST be provided.
       "capabilities": ["financial_data", "sec_filings", "document_parsing"],
       "version": "1.0.0",
       "status": "active",
-      "score": 0.89,
       "avg_latency_ms": 2300.0
     },
     {
@@ -52,13 +48,11 @@ At least one of `capability` or `query` MUST be provided.
       "capabilities": ["math", "calculation"],
       "version": "1.0.0",
       "status": "active",
-      "score": 0.42,
       "avg_latency_ms": 50.0
     }
   ],
   "total": 2,
-  "query": "parse SEC filings",
-  "capability_filter": null
+  "capability_filter": "financial_data"
 }
 ```
 
@@ -68,17 +62,6 @@ At least one of `capability` or `query` MUST be provided.
 {
   "results": [],
   "total": 0,
-  "query": "quantum computing simulator",
-  "capability_filter": null
-}
-```
-
-### 422 Validation Error
-
-Returned when neither `capability` nor `query` is provided.
-
-```json
-{
-  "detail": "At least one of 'capability' or 'query' must be provided."
+  "capability_filter": "quantum_computing"
 }
 ```

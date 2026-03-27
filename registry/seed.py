@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from registry.config import settings
 from registry.database import async_session_factory
-from registry.embeddings import get_embedding_provider
 from registry.models import Tool, ToolCapability
 
 logger = structlog.get_logger()
@@ -214,7 +213,10 @@ SEED_TOOLS = [
 
 
 async def seed(session: AsyncSession | None = None) -> int:
-    embedding_provider = get_embedding_provider(settings)
+    """
+    Idempotently populate the database with a predefined set of fundamental tools.
+    Returns the number of freshly inserted tools.
+    """
     own_session = session is None
 
     if own_session:
@@ -229,7 +231,6 @@ async def seed(session: AsyncSession | None = None) -> int:
             if existing.scalar_one_or_none() is not None:
                 continue
 
-            embedding = await embedding_provider.embed(tool_data["description"])
             now = datetime.now(timezone.utc)
 
             tool = Tool(
@@ -242,7 +243,6 @@ async def seed(session: AsyncSession | None = None) -> int:
                 input_schema=tool_data["input_schema"],
                 output_schema=tool_data["output_schema"],
                 health_check=tool_data.get("health_check"),
-                embedding=embedding,
                 created_at=now,
                 updated_at=now,
             )
@@ -263,6 +263,10 @@ async def seed(session: AsyncSession | None = None) -> int:
 
 
 async def main():
+    """
+    Execute the seed operation defensively via the command line interface.
+    Automatically configures logging and orchestrates the database interactions safely.
+    """
     from registry.middleware.logging import configure_logging
 
     configure_logging(settings.log_level)

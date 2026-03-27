@@ -1,4 +1,4 @@
-"""Initial schema with pgvector extension
+"""Initial schema
 
 Revision ID: 001_initial
 Revises:
@@ -7,7 +7,6 @@ Create Date: 2026-03-26
 
 from alembic import op
 import sqlalchemy as sa
-from pgvector.sqlalchemy import Vector
 
 revision = "001_initial"
 down_revision = None
@@ -16,8 +15,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
-
+    """
+    Migrate the database upwards by creating the initial schema tables: tools, tool_capabilities, and tool_usage_logs.
+    """
     op.create_table(
         "tools",
         sa.Column("tool_id", sa.String(100), primary_key=True),
@@ -26,11 +26,10 @@ def upgrade() -> None:
         sa.Column("version", sa.String(50), nullable=False),
         sa.Column("endpoint", sa.String(500), nullable=False),
         sa.Column("method", sa.String(10), server_default="POST"),
-        sa.Column("input_schema", sa.dialects.postgresql.JSONB(), nullable=False),
-        sa.Column("output_schema", sa.dialects.postgresql.JSONB(), nullable=False),
+        sa.Column("input_schema", sa.JSON(), nullable=False),
+        sa.Column("output_schema", sa.JSON(), nullable=False),
         sa.Column("health_check", sa.String(500), nullable=True),
         sa.Column("status", sa.String(20), server_default="active"),
-        sa.Column("embedding", Vector(768), nullable=True),
         sa.Column("avg_latency_ms", sa.Float(), server_default="0"),
         sa.Column("cost_per_call", sa.Float(), server_default="0"),
         sa.Column(
@@ -90,7 +89,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    Revert the database initial schema by dropping the created tables.
+    """
     op.drop_table("tool_usage_logs")
     op.drop_table("tool_capabilities")
     op.drop_table("tools")
-    op.execute("DROP EXTENSION IF EXISTS vector")

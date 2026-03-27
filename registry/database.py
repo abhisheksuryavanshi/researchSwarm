@@ -10,10 +10,17 @@ async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_o
 
 
 class Base(DeclarativeBase):
+    """
+    Base class for SQLAlchemy declarative models.
+    """
     pass
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Provide a transactional database session for an individual request.
+    Automatically commits changes if successful, or rolls back if an exception occurs.
+    """
     async with async_session_factory() as session:
         try:
             yield session

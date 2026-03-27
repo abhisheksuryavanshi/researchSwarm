@@ -10,6 +10,7 @@ from registry.seed import SEED_TOOLS, seed
 
 @pytest.mark.asyncio
 async def test_seed_idempotency(db_session: AsyncSession):
+    """Verify executing database seeding consecutively only modifies initial state once exclusively."""
     count1 = await seed(db_session)
     assert count1 == len(SEED_TOOLS)
 

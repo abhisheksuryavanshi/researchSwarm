@@ -12,9 +12,9 @@
 **Purpose**: Create project skeleton, dependency management, and local infrastructure.
 
 - [X] T001 Create project directory structure per plan.md: `registry/`, `registry/routers/`, `registry/middleware/`, `alembic/`, `alembic/versions/`, `tests/`, `tests/contract/`, `tests/unit/`, `tests/integration/`
-- [X] T002 [P] Initialize Python project with `pyproject.toml`: define project metadata, dependencies (fastapi, sqlalchemy[asyncio], asyncpg, pgvector, sentence-transformers, google-genai, httpx, structlog, pydantic, pydantic-settings, alembic, uvicorn), and dev dependencies (pytest, pytest-asyncio, httpx, ruff, black, coverage)
-- [X] T003 [P] Create `docker-compose.yml` with PostgreSQL 16 pgvector service (`pgvector/pgvector:pg16`, port 5432, volume for persistence, `researchswarm` database)
-- [X] T004 [P] Create `.env.example` with all config vars: `DATABASE_URL`, `EMBEDDING_PROVIDER`, `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `OPENAI_API_BASE`, `LOG_LEVEL`
+- [X] T002 [P] Initialize Python project with `pyproject.toml`: define project metadata, dependencies (fastapi, sqlalchemy[asyncio], aiomysql, httpx, structlog, pydantic, pydantic-settings, alembic, uvicorn), and dev dependencies (pytest, pytest-asyncio, httpx, ruff, black, coverage)
+- [X] T003 [P] Create `docker-compose.yml` with MySQL 8.0 service (`mysql:8.0`, port 3306, volume for persistence, `researchswarm` database)
+- [X] T004 [P] Create `.env.example` with all config vars: `DATABASE_URL`, `LOG_LEVEL`
 
 ---
 
@@ -24,14 +24,14 @@
 
 **CRITICAL**: No user story work can begin until this phase is complete.
 
-- [X] T005 Implement pydantic-settings config in `registry/config.py`: `Settings` class with `database_url`, `embedding_provider` (enum: local/google/openai), `google_api_key`, `openai_api_key`, `openai_api_base`, `log_level`; loaded from env vars with sensible defaults (embedding_provider=local)
-- [X] T006 [P] Set up async SQLAlchemy engine and session factory in `registry/database.py`: `create_async_engine` with `asyncpg`, `async_sessionmaker`, `Base` declarative base, `get_db` dependency for FastAPI
+- [X] T005 Implement pydantic-settings config in `registry/config.py`: `Settings` class with `database_url`, `log_level`; loaded from env vars with sensible defaults
+- [X] T006 [P] Set up async SQLAlchemy engine and session factory in `registry/database.py`: `create_async_engine` with `aiomysql`, `async_sessionmaker`, `Base` declarative base, `get_db` dependency for FastAPI
 - [X] T007 [P] Implement structlog JSON logging config and request middleware in `registry/middleware/logging.py`: configure structlog with JSON renderer, FastAPI middleware that binds `trace_id` (from `X-Trace-ID` header or auto-generated UUID), `session_id` (from `X-Session-ID` header), request timing
-- [X] T008 Create SQLAlchemy ORM models in `registry/models.py`: `Tool` (all fields from data-model.md including VECTOR(768) via pgvector), `ToolCapability` (FK to Tool with CASCADE, unique constraint), `ToolUsageLog` (FK to Tool, all audit fields); use `mapped_column` style from SQLAlchemy 2.0+
+- [X] T008 Create SQLAlchemy ORM models in `registry/models.py`: `Tool` (all fields from data-model.md), `ToolCapability` (FK to Tool with CASCADE, unique constraint), `ToolUsageLog` (FK to Tool, all audit fields); use `mapped_column` style from SQLAlchemy 2.0+
 - [X] T009 [P] Create Pydantic v2 request/response schemas in `registry/schemas.py`: `ToolCreateRequest`, `ToolUpdateRequest`, `ToolResponse`, `ToolSearchResult`, `ToolSearchResponse`, `ToolBindResponse`, `ToolHealthResponse`, `ToolStatsResponse`, `UsageLogCreateRequest`; all with validation rules from data-model.md (tool_id regex, semver, URL validation, capability tag regex)
-- [X] T010 Set up Alembic with async config in `alembic/env.py` and `alembic.ini`; create initial migration `alembic/versions/001_initial_schema.py`: `CREATE EXTENSION IF NOT EXISTS vector`, create `tools`, `tool_capabilities`, `tool_usage_logs` tables with all indexes from data-model.md
-- [X] T011 Implement EmbeddingProvider interface and backends in `registry/embeddings.py`: `EmbeddingProvider` protocol with `async embed(text: str) -> list[float]`; `LocalEmbeddingProvider` (sentence-transformers, zero-pad to 768), `GoogleEmbeddingProvider` (google-genai text-embedding-004), `OpenAIEmbeddingProvider` (openai text-embedding-3-small, truncate to 768); factory function `get_embedding_provider(settings)` selecting by config
-- [X] T012 Create FastAPI application factory with lifespan in `registry/app.py`: create app, include all routers, attach structlog middleware, init embedding provider in lifespan (startup: load model / validate API key; shutdown: cleanup), init shared httpx.AsyncClient for health proxying, global exception handler returning structured JSON errors
+- [X] T010 Set up Alembic with async config in `alembic/env.py` and `alembic.ini`; create initial migration `alembic/versions/001_initial_schema.py`: create `tools`, `tool_capabilities`, `tool_usage_logs` tables with all indexes from data-model.md
+- [X] T011 ~~REMOVED~~ (Embedding provider — removed in simplification. Vector search replaced by capability-tag filtering.)
+- [X] T012 Create FastAPI application factory with lifespan in `registry/app.py`: create app, include all routers, attach structlog middleware, init shared httpx.AsyncClient for health proxying, global exception handler returning structured JSON errors
 
 **Checkpoint**: Foundation ready — user story implementation can now begin.
 
@@ -47,14 +47,14 @@
 
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
-- [X] T013 [P] [US1] Contract test for `POST /tools/register` in `tests/contract/test_register_contract.py`: test 201 with valid payload (verify all response fields match contract/register.md), test 422 with missing required fields, test 422 with invalid tool_id regex, test 409 with duplicate tool_id, test 503 when embedding provider is mocked to fail
-- [X] T014 [P] [US1] Contract test for `PUT /tools/{id}` in `tests/contract/test_update_contract.py`: test 200 with valid update (verify updated_at changes), test 200 with description change (verify embedding re-generated via mock), test 404 for nonexistent tool, test 422 with invalid fields, test partial update preserves unchanged fields
+- [X] T013 [P] [US1] Contract test for `POST /tools/register` in `tests/contract/test_register_contract.py`: test 201 with valid payload (verify all response fields match contract/register.md), test 422 with missing required fields, test 422 with invalid tool_id regex, test 409 with duplicate tool_id
+- [X] T014 [P] [US1] Contract test for `PUT /tools/{id}` in `tests/contract/test_update_contract.py`: test 200 with valid update (verify updated_at changes), test 200 with description change, test 404 for nonexistent tool, test 422 with invalid fields, test partial update preserves unchanged fields
 - [X] T015 [P] [US1] Contract test for `DELETE /tools/{id}` in `tests/contract/test_delete_contract.py`: test 200 sets status to 'deprecated', test 404 for nonexistent tool, test deprecated tool excluded from search results, test status restorable via PUT
 
 ### Implementation for User Story 1
 
-- [X] T016 [US1] Implement `POST /tools/register` in `registry/routers/register.py`: validate request via `ToolCreateRequest` schema, check for duplicate tool_id (409), call EmbeddingProvider to embed description, persist Tool + ToolCapability rows in a transaction, return `ToolResponse` with 201
-- [X] T017 [US1] Implement `PUT /tools/{id}` in `registry/routers/register.py`: validate request via `ToolUpdateRequest`, fetch existing tool (404 if missing), detect description change → re-embed, update capabilities (delete old + insert new), update tool row, return `ToolResponse` with 200
+- [X] T016 [US1] Implement `POST /tools/register` in `registry/routers/register.py`: validate request via `ToolCreateRequest` schema, check for duplicate tool_id (409), persist Tool + ToolCapability rows in a transaction, return `ToolResponse` with 201
+- [X] T017 [US1] Implement `PUT /tools/{id}` in `registry/routers/register.py`: validate request via `ToolUpdateRequest`, fetch existing tool (404 if missing), update capabilities (delete old + insert new), update tool row, return `ToolResponse` with 200
 - [X] T018 [US1] Implement `DELETE /tools/{id}` (soft delete) in `registry/routers/register.py`: fetch tool (404 if missing), set `status = 'deprecated'`, set `updated_at`, return `ToolResponse` with 200
 - [X] T019 [P] [US1] Unit tests for Pydantic schema validation in `tests/unit/test_schemas.py`: test tool_id regex (valid/invalid patterns), semver validation, URL validation, capability tag regex, JSON Schema validation for input/output_schema fields
 - [X] T020 [P] [US1] Unit tests for ORM models in `tests/unit/test_models.py`: test Tool model field defaults (status='active', method='POST'), test ToolCapability unique constraint, test ToolUsageLog field types, test timestamp auto-generation
@@ -63,21 +63,21 @@
 
 ---
 
-## Phase 4: User Story 2 — Semantic Tool Search (Priority: P1)
+## Phase 4: User Story 2 — Tool Search & Listing (Priority: P1)
 
-**Goal**: Agents discover tools by capability tags and/or natural language semantic query. Results are ranked by cosine similarity.
+**Goal**: Agents discover tools by capability tags or retrieve the full tool catalog for LLM-based selection.
 
-**Independent Test**: Seed 5+ tools, search by capability → filtered results; search by query → ranked by semantic similarity; combined → filtered then ranked.
+**Independent Test**: Seed 5+ tools, search by capability → filtered results; list all → full catalog returned.
 
 ### Tests for User Story 2
 
-- [X] T021 [P] [US2] Contract test for `GET /tools/search` in `tests/contract/test_search_contract.py`: test capability-only filter returns matching tools, test query-only returns semantically ranked results, test combined capability+query, test empty results return `[]` not error, test deprecated/unhealthy tools excluded, test min_score filtering, test limit parameter, test 422 when neither capability nor query provided
+- [X] T021 [P] [US2] Contract test for `GET /tools/search` in `tests/contract/test_search_contract.py`: test capability filter returns matching tools, test no-filter returns all active tools, test empty results return `[]` not error, test deprecated tools excluded, test limit parameter
 
 ### Implementation for User Story 2
 
-- [X] T022 [US2] Implement pgvector semantic search logic in `registry/search.py`: `search_tools(db, capability, query, limit, min_score, embedding_provider)` — if capability: filter by JOIN on tool_capabilities; if query: embed query via EmbeddingProvider then ORDER BY cosine similarity (`<=>` operator); if both: filter first then rank; exclude deprecated/unhealthy status; return scored results
-- [X] T023 [US2] Implement `GET /tools/search` router in `registry/routers/search.py`: parse query params (capability, query, limit=10, min_score=0.3), validate at least one provided (422), call search logic, return `ToolSearchResponse`
-- [X] T024 [P] [US2] Unit tests for search logic in `tests/unit/test_search_logic.py`: test capability filtering (exact match), test cosine similarity ranking (mock embeddings with known distances), test combined filter+rank, test min_score threshold, test status exclusion
+- [X] T022 [US2] Implement search logic in `registry/search.py`: `search_tools(db, capability, limit)` — if capability: filter by JOIN on tool_capabilities; exclude deprecated/unhealthy status; return results ordered by created_at
+- [X] T023 [US2] Implement `GET /tools/search` router in `registry/routers/search.py`: parse query params (capability, limit=10), call search logic, return `ToolSearchResponse`
+- [X] T024 [P] [US2] Unit tests for search logic in `tests/unit/test_search_logic.py`: test capability filtering (exact match), test status exclusion, test limit
 
 **Checkpoint**: Core discovery loop complete — tools can be registered and found via search.
 
@@ -113,7 +113,7 @@
 
 ### Implementation for User Story 6
 
-- [X] T028 [US6] Implement idempotent seed script in `registry/seed.py`: define 7 tool fixtures (SerpAPI, ArXiv, GitHub, Wikipedia, Calculator, URL Scraper, SEC Filing Parser) per research.md RT-008 with full metadata + schemas + capability tags; use `INSERT ... ON CONFLICT (tool_id) DO NOTHING` for idempotency; embed all descriptions via EmbeddingProvider; runnable as `python -m registry.seed`
+- [X] T028 [US6] Implement idempotent seed script in `registry/seed.py`: define 7 tool fixtures (SerpAPI, ArXiv, GitHub, Wikipedia, Calculator, URL Scraper, SEC Filing Parser) per research.md RT-008 with full metadata + schemas + capability tags; use `INSERT ... ON CONFLICT (tool_id) DO NOTHING` for idempotency; runnable as `python -m registry.seed`
 
 **Checkpoint**: Registry has demo data. Search and bind can be exercised end-to-end.
 
@@ -162,7 +162,7 @@
 - [X] T033 Integration test: register → search → bind flow in `tests/integration/test_register_search_bind_flow.py`: register 3 tools with different capabilities, search by capability → verify correct filter, search by query → verify semantic ranking, bind top result → verify LangChain-compatible response
 - [X] T034 Integration test: seed idempotency in `tests/integration/test_seed_idempotency.py`: run seed script, verify 7 tools, run seed again, verify still 7 tools, verify all searchable and bindable
 - [X] T035 Verify all structured logs include `trace_id` and `session_id` fields: add assertions in integration tests that log output contains expected context vars (SC-006)
-- [X] T036 Run `quickstart.md` validation: execute each step in quickstart.md against a fresh Docker Compose environment (start postgres, migrate, seed, start service, curl each endpoint)
+- [X] T036 Run `quickstart.md` validation: execute each step in quickstart.md against a fresh Docker Compose environment (start mysql, migrate, seed, start service, curl each endpoint)
 - [X] T037 Code cleanup: ensure all public functions have type annotations, remove any TODO comments, verify ruff + black pass with zero warnings
 
 ---
