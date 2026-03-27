@@ -164,7 +164,7 @@ additional operational standards:
 - **Concurrency**: The tool registry MUST support concurrent search and bind
   requests without serialization bottlenecks.
 - **Session storage**: Redis for live session state (chat history, active
-  constraints). PostgreSQL for durable persistence (research snapshots,
+  constraints). MySQL for durable persistence (research snapshots,
   accumulated sources). Read latency for session retrieval MUST be < 50ms.
 
 ## Development Workflow

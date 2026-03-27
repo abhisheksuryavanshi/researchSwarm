@@ -27,7 +27,7 @@ The architecture separates the research engine (the agent graph) from the interf
   └──────────────────────┬──────────────────────────────┘
 │                        │                                │
   ┌──────────────────────▼──────────────────────────────┐
-│ │              Session Store (Redis/PostgreSQL)       │ │
+│ │              Session Store (Redis/MySQL)             │ │
   │  - Chat history per session                         │
 │ │  - Prior research state snapshots                   │ │
   │  - User-defined constraints & preferences           │
@@ -45,7 +45,7 @@ The architecture separates the research engine (the agent graph) from the interf
 │                   ┌────────▼────────┐                    │
 │                   │  Tool Registry  │                    │
 │                   │   (FastAPI +    │                    │
-│                   │   PostgreSQL)   │                    │
+│                   │     MySQL)      │                    │
 │                   └────────┬────────┘                    │
 │                            │                             │
 │            ┌───────────────┼───────────────┐             │
@@ -70,13 +70,12 @@ The architecture separates the research engine (the agent graph) from the interf
 |--------------------|----------------------------------------------------------------------|
 | **Orchestration**  | LangGraph — agent state machine, conditional routing, parallel exec  |
 | **LLM**           | OpenAI GPT-4o / Anthropic Claude via LangChain abstraction           |
-| **Tool Registry**  | FastAPI + PostgreSQL (tool metadata, capability tags, versioning)     |
-| **Semantic Search** | Embedding model for tool description similarity matching            |
+| **Tool Registry**  | FastAPI + MySQL (tool metadata, capability tags, versioning)          |
 | **Tracing**        | Langfuse (self-hosted or cloud) for full trace visibility            |
 | **Logging**        | Structlog with correlation IDs per research session                  |
-| **Session Store**  | Redis (chat history, state snapshots) + PostgreSQL (persistent sessions) |
+| **Session Store**  | Redis (chat history, state snapshots) + MySQL (persistent sessions)  |
 | **Testing**        | Pytest + LangSmith evaluation datasets                               |
-| **Containerization** | Docker Compose (PostgreSQL, Redis, Langfuse)                       |
+| **Containerization** | Docker Compose (MySQL, Redis, Langfuse)                             |
 | **Language**       | Python 3.11+                                                         |
 
 ## Core Components
@@ -87,7 +86,7 @@ A standalone FastAPI service that acts as a catalog for all available tools. Eac
 
 **Endpoints:**
 - `POST /tools/register` — register a new tool with metadata + schema
-- `GET /tools/search?capability=X&query=Y` — semantic search over tool descriptions
+- `GET /tools/search?capability=X` — search by capability tag (or list all tools when no filter)
 - `GET /tools/{id}/bind` — returns LangChain-compatible tool definition for runtime binding
 - `GET /tools/{id}/health` — proxied health check
 - `GET /tools/stats` — usage statistics per tool
@@ -110,11 +109,11 @@ A standalone FastAPI service that acts as a catalog for all available tools. Eac
 ```
 
 **Discovery Flow:**
-1. Agent determines it needs a capability (e.g., "I need financial data for AAPL")
-2. Agent calls registry: `GET /tools/search?capability=financial_data`
-3. Registry returns matching tools ranked by relevance
-4. Agent selects best match, registry returns LangChain-compatible definition
-5. Agent binds the tool and invokes it within the current execution
+1. Agent receives the full tool catalog from the registry (`GET /tools/search`)
+   or filters by capability (`GET /tools/search?capability=financial_data`)
+2. The LLM selects the best tool based on the full tool definitions
+3. Agent calls the registry for a LangChain-compatible definition (`GET /tools/{id}/bind`)
+4. Agent binds the tool and invokes it within the current execution
 
 ### Agent Roles
 
@@ -156,7 +155,7 @@ The system extends into a multi-turn research assistant. A **Conversation Coordi
 - **Session memory** — maintains chat history and prior research state snapshots so agents have context from previous turns
 - **Research continuity** — accumulated findings persist across turns; new research builds on prior results rather than starting from scratch
 
-**Session State (stored in Redis + PostgreSQL):**
+**Session State (stored in Redis + MySQL):**
 - `session_id` — unique conversation identifier
 - `message_history` — full chat transcript (user messages + system responses)
 - `research_snapshots` — state of the LangGraph after each completed run (raw findings, analysis, critique, synthesis)
@@ -180,14 +179,14 @@ The system extends into a multi-turn research assistant. A **Conversation Coordi
 ```
 researchSwarm/
 ├── README.md
-├── docker-compose.yml              # PostgreSQL, Redis, Langfuse
+├── docker-compose.yml              # MySQL, Redis, Langfuse
 ├── pyproject.toml
 ├── .env.example
 ├── registry/
 │   ├── app.py                       # FastAPI tool registry service
 │   ├── models.py                    # SQLAlchemy models
 │   ├── schemas.py                   # Pydantic schemas
-│   ├── search.py                    # Semantic tool search
+│   ├── search.py                    # Tool search (capability filtering)
 │   └── seed.py                      # Seed initial tools
 ├── agents/
 │   ├── graph.py                     # LangGraph state machine definition
@@ -205,7 +204,7 @@ researchSwarm/
 │   └── sec_parser.py
 ├── conversation/                    # Phase 5
 │   ├── coordinator.py               # Conversation Coordinator agent
-│   ├── session.py                   # Session management (Redis + PostgreSQL)
+│   ├── session.py                   # Session management (Redis + MySQL)
 │   ├── intent.py                    # User intent classification
 │   └── router.py                    # Maps intents to agent re-invocation strategies
 ├── observability/
@@ -221,7 +220,7 @@ researchSwarm/
 ## Implementation Phases
 
 ### Phase 1: Tool Registry Service
-PostgreSQL schema design, FastAPI endpoints (register, search, bind, health, stats), semantic search over tool descriptions via embeddings, seed registry with 5-8 tools, unit tests for registry CRUD and search.
+MySQL schema design, FastAPI endpoints (register, search, bind, health, stats), capability-based search and full catalog listing, seed registry with 7 tools, unit tests for registry CRUD and search.
 
 ### Phase 2: Agent Implementation
 LangGraph state schema, implement all four agents (Researcher, Analyst, Critic, Synthesizer), wire the conditional graph with loop-back from Critic to Researcher.
@@ -233,7 +232,7 @@ Build the `ToolDiscoveryTool` meta-tool, implement runtime tool binding (agent r
 Langfuse trace integration, structured logging with correlation IDs, demo scenario execution, documentation.
 
 ### Phase 5: Conversational Session Layer (future)
-Conversation Coordinator agent, session store (Redis for live state, PostgreSQL for persistence), user intent classification (new query vs. refinement vs. reformatting vs. meta-question), selective agent re-invocation routing, accumulated research state across turns, constraint propagation into the engine's state schema.
+Conversation Coordinator agent, session store (Redis for live state, MySQL for persistence), user intent classification (new query vs. refinement vs. reformatting vs. meta-question), selective agent re-invocation routing, accumulated research state across turns, constraint propagation into the engine's state schema.
 
 ## Success Criteria
 
