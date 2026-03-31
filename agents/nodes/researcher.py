@@ -26,6 +26,77 @@ def _search_summary(results: list[dict[str, Any]]) -> str:
     return "\n".join(lines) if lines else "(no tools)"
 
 
+def _fallback_for_type(type_name: str | None, query: str, constraints: dict[str, Any]) -> Any:
+    if type_name == "string":
+        return query
+    if type_name == "integer":
+        return 0
+    if type_name == "number":
+        return 0.0
+    if type_name == "boolean":
+        return False
+    if type_name == "array":
+        return []
+    if type_name == "object":
+        return constraints
+    return query
+
+
+def _build_tool_payload(
+    *,
+    query: str,
+    constraints: dict[str, Any],
+    gaps: list[str],
+    args_schema: dict[str, Any] | None,
+) -> dict[str, Any]:
+    schema = args_schema if isinstance(args_schema, dict) else {}
+    properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else None
+    required = schema.get("required") if isinstance(schema.get("required"), list) else []
+
+    # If the tool has no schema hints, provide a practical default contract.
+    if not properties:
+        payload: dict[str, Any] = {"query": query}
+        if constraints:
+            payload["constraints"] = constraints
+        if gaps:
+            payload["gaps"] = gaps
+        return payload
+
+    payload: dict[str, Any] = {}
+    lowered_constraints = {str(k).lower(): v for k, v in constraints.items()}
+
+    for key, prop in properties.items():
+        key_l = key.lower()
+        prop_d = prop if isinstance(prop, dict) else {}
+
+        if key_l in {"query", "q", "question", "prompt", "search_query", "search_term", "text"}:
+            payload[key] = query
+            continue
+        if key_l in {"constraints", "filters"}:
+            payload[key] = constraints
+            continue
+        if key_l in {"gaps", "missing_topics", "follow_up_topics"}:
+            payload[key] = gaps
+            continue
+        if key_l in lowered_constraints:
+            payload[key] = lowered_constraints[key_l]
+            continue
+        if key in constraints:
+            payload[key] = constraints[key]
+            continue
+        if "default" in prop_d:
+            payload[key] = prop_d["default"]
+
+    # Fill required keys if still missing with type-aware fallbacks.
+    for req in required:
+        if req not in payload:
+            rprop = properties.get(req, {})
+            rtype = rprop.get("type") if isinstance(rprop, dict) else None
+            payload[req] = _fallback_for_type(rtype, query, constraints)
+
+    return payload
+
+
 async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) -> dict[str, Any]:
     ctx = runtime.context
     llm = ctx["llm"]
@@ -113,15 +184,16 @@ async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) 
             "errors": ["researcher could not select tools"],
         }
 
-    candidate_ids = [r["tool_id"] for r in results]
-    try_order = list(dict.fromkeys(selection.selected_tool_ids + [c for c in candidate_ids]))
+    # Spec: invoke only the tools explicitly selected by the LLM (no non-selected registry candidates).
+    # Keep order stable while deduplicating.
+    selected_ids = list(dict.fromkeys(selection.selected_tool_ids))
 
     new_findings: list[dict[str, Any]] = []
     new_sources: list[dict[str, str]] = []
     errs: list[str] = []
     any_success = False
 
-    for tool_id in try_order:
+    for tool_id in selected_ids:
         bind_info: dict[str, Any] | None = None
         try:
             bind_info = await registry.bind(tool_id)
@@ -139,10 +211,16 @@ async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) 
         success = False
         err_msg = None
         try:
+            payload = _build_tool_payload(
+                query=state["query"],
+                constraints=constraints if isinstance(constraints, dict) else {},
+                gaps=gaps if isinstance(gaps, list) else [],
+                args_schema=bind_info.get("args_schema"),
+            )
             data = await registry.invoke(
                 bind_info["endpoint"],
                 bind_info.get("method", "POST"),
-                {},
+                payload,
             )
             success = True
             any_success = True
@@ -172,8 +250,8 @@ async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) 
                 error_message=err_msg,
             )
 
-        if success:
-            break
+        # Do not break on first success: if the LLM selected multiple tools (top-k), we should
+        # gather findings from all of them.
 
     total_usage = state.get("token_usage", {}).get("researcher", 0) + tokens
     warn_thr = getattr(acfg, "token_usage_warn_threshold", 100_000)
@@ -182,7 +260,7 @@ async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) 
 
     await log.ainfo("node_exit", node="researcher", findings=len(new_findings))
 
-    if not any_success and candidate_ids:
+    if not any_success and selected_ids:
         errs.append("all attempted tool invocations failed")
 
     return {

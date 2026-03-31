@@ -28,6 +28,9 @@ async def test_researcher_selects_binds_invokes(mock_registry_client, agent_conf
     mock_registry_client.search.assert_awaited()
     mock_registry_client.bind.assert_awaited()
     mock_registry_client.invoke.assert_awaited()
+    invoke_call = mock_registry_client.invoke.await_args_list[0]
+    assert invoke_call.args[2] != {}
+    assert invoke_call.args[2]["query"] == "q?"
     assert len(out["raw_findings"]) >= 1
     assert len(out["sources"]) >= 1
 
@@ -65,7 +68,7 @@ async def test_researcher_invoke_fallback(mock_registry_client, agent_config):
         agent_config.max_iterations,
     )
     llm = FakeStructuredLLM(
-        [ToolSelectionResponse(selected_tool_ids=["t1"], reasoning="one")],
+        [ToolSelectionResponse(selected_tool_ids=["t1", "t2"], reasoning="two tools fallback")],
     )
     mock_registry_client.invoke.side_effect = [
         Exception("tool down"),
@@ -96,9 +99,9 @@ async def test_researcher_invoke_fallback(mock_registry_client, agent_config):
     mock_registry_client.bind = AsyncMock(side_effect=bind_side)
     ctx: GraphContext = {"llm": llm, "registry": mock_registry_client, "agent_config": agent_config}
     out = await researcher_node(state, Runtime(context=ctx))
-    assert mock_registry_client.invoke.await_count >= 2
+    assert mock_registry_client.invoke.await_count == 2
     assert len(out["errors"]) >= 1
-    assert len(out["raw_findings"]) >= 1
+    assert len(out["raw_findings"]) == 1
 
 
 @pytest.mark.asyncio
@@ -121,3 +124,51 @@ async def test_researcher_registry_unreachable(agent_config):
     ctx: GraphContext = {"llm": llm, "registry": reg, "agent_config": agent_config}
     out = await researcher_node(state, Runtime(context=ctx))
     assert out["errors"]
+
+
+@pytest.mark.asyncio
+async def test_researcher_builds_payload_from_args_schema(mock_registry_client, agent_config):
+    from unittest.mock import AsyncMock
+
+    state = merge_graph_defaults(
+        {
+            "query": "latest transformer advances",
+            "trace_id": str(uuid.uuid4()),
+            "session_id": "s1",
+            "constraints": {"max_results": 5, "sources": ["arxiv"]},
+            "gaps": ["recent benchmarks"],
+        },
+        agent_config.max_iterations,
+    )
+    llm = FakeStructuredLLM(
+        [ToolSelectionResponse(selected_tool_ids=["t1"], reasoning="schema aware")],
+    )
+
+    mock_registry_client.bind = AsyncMock(
+        return_value={
+            "endpoint": "https://example.test/t1",
+            "method": "POST",
+            "name": "t1",
+            "description": "d",
+            "args_schema": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "max_results": {"type": "integer"},
+                    "filters": {"type": "object"},
+                    "gaps": {"type": "array"},
+                },
+                "required": ["query", "max_results"],
+            },
+            "version": "1.0.0",
+            "return_schema": {},
+        }
+    )
+    ctx: GraphContext = {"llm": llm, "registry": mock_registry_client, "agent_config": agent_config}
+    await researcher_node(state, Runtime(context=ctx))
+
+    payload = mock_registry_client.invoke.await_args_list[0].args[2]
+    assert payload["query"] == "latest transformer advances"
+    assert payload["max_results"] == 5
+    assert payload["filters"] == {"max_results": 5, "sources": ["arxiv"]}
+    assert payload["gaps"] == ["recent benchmarks"]
