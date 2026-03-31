@@ -115,6 +115,16 @@ A standalone FastAPI service that acts as a catalog for all available tools. Eac
 3. Agent calls the registry for a LangChain-compatible definition (`GET /tools/{id}/bind`)
 4. Agent binds the tool and invokes it within the current execution
 
+### Agent layer (LangGraph)
+
+The `agents/` package runs the research **StateGraph**: Researcher → Analyst → Critic, with conditional loop-back to the Researcher when the Critic fails the quality gate, then Synthesizer → end. Agents use the registry **only via HTTP** (`GET /tools/search`, `GET /tools/{id}/bind`, `POST /tools/usage-log` for invocation metrics).
+
+**Quickstart:** [specs/002-agent-layer/quickstart.md](specs/002-agent-layer/quickstart.md) — configure `GOOGLE_API_KEY`, `REGISTRY_BASE_URL`, and optional Langfuse vars in `.env`.
+
+**Entry points:** `build_research_graph()`, `invoke_research_graph()` (wraps `ainvoke` with `asyncio.timeout` from `AgentConfig.graph_timeout_seconds` and a single-flight guard raising `GraphBusyError` if a run is already active), and `default_graph_context()` to build a Gemini client plus `RegistryClient`.
+
+**Graph sketch:** `build_research_graph().get_graph().draw_ascii()` (requires `pip install grandalf`).
+
 ### Agent Roles
 
 | Agent           | Role                                              | Static Tools                | Dynamic Tools                                    |
@@ -189,13 +199,15 @@ researchSwarm/
 │   ├── search.py                    # Tool search (capability filtering)
 │   └── seed.py                      # Seed initial tools
 ├── agents/
-│   ├── graph.py                     # LangGraph state machine definition
-│   ├── state.py                     # Shared state schema (includes constraints dict)
-│   ├── researcher.py
-│   ├── analyst.py
-│   ├── critic.py
-│   ├── synthesizer.py
-│   └── tool_discovery.py            # Meta-tool for runtime discovery
+│   ├── graph.py                     # build_research_graph, invoke_research_graph
+│   ├── state.py                     # ResearchState, validators, reducers
+│   ├── config.py                   # AgentConfig (pydantic-settings)
+│   ├── tracing.py                  # Langfuse callback + structlog helpers
+│   ├── response_models.py          # Structured LLM outputs
+│   ├── nodes/                      # researcher, analyst, critic, synthesizer
+│   ├── prompts/                    # Prompt templates per agent
+│   └── tools/
+│       └── registry_client.py      # httpx client for registry + tool HTTP invoke
 ├── tools/
 │   ├── base.py                      # Dynamic tool builder
 │   ├── serp.py
