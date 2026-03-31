@@ -36,10 +36,18 @@ class RegistryClient:
         if self._own_registry:
             await self._registry.aclose()
 
-    async def search(self, capability: str | None = None, limit: int = 10) -> dict[str, Any]:
+    async def search(
+        self,
+        capability: str | None = None,
+        limit: int = 10,
+        constraints: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         params: dict[str, Any] = {"limit": limit}
         if capability:
             params["capability"] = capability
+        if constraints and isinstance(constraints.get("sources"), list):
+            src = constraints["sources"]
+            params["sources"] = ",".join(str(s) for s in src if s is not None)
         r = await self._registry.get("/tools/search", params=params)
         r.raise_for_status()
         return r.json()

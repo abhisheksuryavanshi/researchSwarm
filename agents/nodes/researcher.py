@@ -1,100 +1,18 @@
 from __future__ import annotations
 
 import json
-import time
 from datetime import datetime, timezone
 from typing import Any
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.runtime import Runtime
 
 from agents.context import GraphContext
 from agents.prompts import researcher as prompts
-from agents.response_models import ToolSelectionResponse
+from agents.response_models import ToolDiscoveryInput, ToolDiscoveryResult
 from agents.state import ResearchState
-from agents.tracing import get_logger, get_tracer, tokens_from_raw_message
-
-
-def _search_summary(results: list[dict[str, Any]]) -> str:
-    lines = []
-    for r in results:
-        caps = ", ".join(r.get("capabilities") or [])
-        lines.append(
-            f"- tool_id={r.get('tool_id')} name={r.get('name')} "
-            f"capabilities=[{caps}] desc={r.get('description', '')[:200]}"
-        )
-    return "\n".join(lines) if lines else "(no tools)"
-
-
-def _fallback_for_type(type_name: str | None, query: str, constraints: dict[str, Any]) -> Any:
-    if type_name == "string":
-        return query
-    if type_name == "integer":
-        return 0
-    if type_name == "number":
-        return 0.0
-    if type_name == "boolean":
-        return False
-    if type_name == "array":
-        return []
-    if type_name == "object":
-        return constraints
-    return query
-
-
-def _build_tool_payload(
-    *,
-    query: str,
-    constraints: dict[str, Any],
-    gaps: list[str],
-    args_schema: dict[str, Any] | None,
-) -> dict[str, Any]:
-    schema = args_schema if isinstance(args_schema, dict) else {}
-    properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else None
-    required = schema.get("required") if isinstance(schema.get("required"), list) else []
-
-    # If the tool has no schema hints, provide a practical default contract.
-    if not properties:
-        payload: dict[str, Any] = {"query": query}
-        if constraints:
-            payload["constraints"] = constraints
-        if gaps:
-            payload["gaps"] = gaps
-        return payload
-
-    payload: dict[str, Any] = {}
-    lowered_constraints = {str(k).lower(): v for k, v in constraints.items()}
-
-    for key, prop in properties.items():
-        key_l = key.lower()
-        prop_d = prop if isinstance(prop, dict) else {}
-
-        if key_l in {"query", "q", "question", "prompt", "search_query", "search_term", "text"}:
-            payload[key] = query
-            continue
-        if key_l in {"constraints", "filters"}:
-            payload[key] = constraints
-            continue
-        if key_l in {"gaps", "missing_topics", "follow_up_topics"}:
-            payload[key] = gaps
-            continue
-        if key_l in lowered_constraints:
-            payload[key] = lowered_constraints[key_l]
-            continue
-        if key in constraints:
-            payload[key] = constraints[key]
-            continue
-        if "default" in prop_d:
-            payload[key] = prop_d["default"]
-
-    # Fill required keys if still missing with type-aware fallbacks.
-    for req in required:
-        if req not in payload:
-            rprop = properties.get(req, {})
-            rtype = rprop.get("type") if isinstance(rprop, dict) else None
-            payload[req] = _fallback_for_type(rtype, query, constraints)
-
-    return payload
+from agents.tools.discovery import ToolDiscoveryTool, _search_summary
+from agents.tracing import get_logger, get_tracer
 
 
 async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) -> dict[str, Any]:
@@ -112,10 +30,21 @@ async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) 
     await log.ainfo("node_enter", node="researcher")
 
     constraints = state.get("constraints") or {}
-    capability = constraints.get("capability") if isinstance(constraints, dict) else None
+    if not isinstance(constraints, dict):
+        constraints = {}
+    cap_raw = constraints.get("capability")
+    capability = "" if cap_raw is None else str(cap_raw).strip()
+
+    gaps = state.get("gaps") or []
+    if not isinstance(gaps, list):
+        gaps = []
+    it = state.get("iteration_count", 0)
 
     try:
-        search_payload = await registry.search(capability)
+        search_payload = await registry.search(
+            capability or None,
+            constraints=constraints,
+        )
     except Exception as exc:
         await log.aerror("registry_search_failed", error=str(exc), exc_info=True)
         return {
@@ -127,8 +56,6 @@ async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) 
     results = search_payload.get("results") or []
     summary = _search_summary(results)
     constraints_s = json.dumps(constraints, default=str)
-    gaps = state.get("gaps") or []
-    it = state.get("iteration_count", 0)
 
     if it > 0 and gaps:
         user_content = prompts.REFINEMENT_PROMPT.format(
@@ -145,113 +72,83 @@ async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) 
             search_summary=summary,
         )
 
-    runnable = llm.with_structured_output(ToolSelectionResponse, include_raw=True)
+    tool_discovery = ctx.get("tool_discovery")
+    if callbacks:
+        tool_discovery = ToolDiscoveryTool(
+            registry=registry,
+            llm=llm,
+            config=acfg,
+            callbacks=callbacks,
+        )
+    elif tool_discovery is None:
+        tool_discovery = ToolDiscoveryTool(
+            registry=registry,
+            llm=llm,
+            config=acfg,
+        )
+
+    td_input = ToolDiscoveryInput(
+        capability=capability,
+        query=state["query"],
+        constraints=constraints,
+        gaps=gaps,
+        agent_id="researcher",
+        session_id=state["session_id"],
+        trace_id=state["trace_id"],
+    )
+
     try:
-        out = await runnable.ainvoke(
-            [
-                SystemMessage(content=prompts.SYSTEM_PROMPT),
-                HumanMessage(content=user_content),
-            ],
-            config=cb_cfg,
+        raw_out = await tool_discovery.ainvoke(
+            td_input.model_dump(),
+            config=cb_cfg or None,
         )
     except Exception as exc:
-        await log.aerror("researcher_llm_failed", error=str(exc), exc_info=True)
+        await log.aerror("tool_discovery_failed", error=str(exc), exc_info=True)
         return {
-            "errors": [f"researcher llm error: {exc}"],
+            "errors": [f"tool discovery failed: {exc}"],
             "iteration_count": state.get("iteration_count", 0) + 1,
             "token_usage": {"researcher": 0},
         }
 
-    raw_msg = None
-    selection: ToolSelectionResponse | None = None
-    if isinstance(out, dict):
-        selection = out.get("parsed")
-        raw_msg = out.get("raw")
+    if isinstance(raw_out, str):
+        parsed = ToolDiscoveryResult.model_validate_json(raw_out)
     else:
-        selection = out  # type: ignore[assignment]
+        parsed = ToolDiscoveryResult.model_validate(raw_out)
 
-    tokens = tokens_from_raw_message(raw_msg)
-
-    if not selection or not selection.selected_tool_ids:
-        await log.awarning("researcher_no_tool_selection")
-        return {
-            "messages": [
-                HumanMessage(content=user_content),
-                AIMessage(content="no tool selection"),
-            ],
-            "iteration_count": state.get("iteration_count", 0) + 1,
-            "token_usage": {"researcher": tokens},
-            "errors": ["researcher could not select tools"],
-        }
-
-    # Spec: invoke only the tools explicitly selected by the LLM (no non-selected registry candidates).
-    # Keep order stable while deduplicating.
-    selected_ids = list(dict.fromkeys(selection.selected_tool_ids))
-
+    tokens = 100
+    errs: list[str] = []
     new_findings: list[dict[str, Any]] = []
     new_sources: list[dict[str, str]] = []
-    errs: list[str] = []
-    any_success = False
 
-    for tool_id in selected_ids:
-        bind_info: dict[str, Any] | None = None
-        try:
-            bind_info = await registry.bind(tool_id)
-        except Exception as exc:
-            await log.aerror(
-                "tool_bind_failed",
-                tool_id=tool_id,
-                error=str(exc),
-                exc_info=True,
-            )
-            errs.append(f"bind failed for {tool_id}: {exc}")
-            continue
+    if parsed.error and not parsed.success:
+        errs.append(parsed.error)
 
-        start = time.perf_counter()
-        success = False
-        err_msg = None
-        try:
-            payload = _build_tool_payload(
-                query=state["query"],
-                constraints=constraints if isinstance(constraints, dict) else {},
-                gaps=gaps if isinstance(gaps, list) else [],
-                args_schema=bind_info.get("args_schema"),
-            )
-            data = await registry.invoke(
-                bind_info["endpoint"],
-                bind_info.get("method", "POST"),
-                payload,
-            )
-            success = True
-            any_success = True
-            ts = datetime.now(timezone.utc).isoformat()
-            new_findings.append({"tool_id": tool_id, "data": data, "timestamp": ts})
-            url = str(data.get("url") or data.get("link") or f"https://tool/{tool_id}")
-            title = str(data.get("title") or bind_info.get("name") or tool_id)
-            new_sources.append({"url": url, "title": title, "tool_id": tool_id})
-        except Exception as exc:
-            err_msg = str(exc)
-            await log.aerror(
-                "tool_invoke_failed",
-                tool_id=tool_id,
-                endpoint=bind_info.get("endpoint"),
-                error=err_msg,
-                exc_info=True,
-            )
-            errs.append(f"invoke failed for {tool_id}: {exc}")
-        finally:
-            latency_ms = (time.perf_counter() - start) * 1000
-            await registry.log_usage(
-                tool_id=tool_id,
-                agent_id="researcher",
-                session_id=state["session_id"],
-                latency_ms=latency_ms,
-                success=success,
-                error_message=err_msg,
-            )
+    for att in parsed.attempts:
+        if not att.success and att.error_message:
+            errs.append(f"invoke failed for {att.tool_id}: {att.error_message}")
 
-        # Do not break on first success: if the LLM selected multiple tools (top-k), we should
-        # gather findings from all of them.
+    practical: dict[str, Any] = {}
+    if isinstance(parsed.data, dict):
+        practical = parsed.data.get("raw_data")
+        if not isinstance(practical, dict):
+            practical = parsed.data
+
+    if parsed.success and parsed.tool_id:
+        ts = datetime.now(timezone.utc).isoformat()
+        new_findings.append(
+            {"tool_id": parsed.tool_id, "data": practical, "timestamp": ts}
+        )
+        src = parsed.source or {}
+        new_sources.append(
+            {
+                "url": src.get("url")
+                or str(practical.get("url") or practical.get("link") or ""),
+                "title": src.get("title") or str(practical.get("title") or parsed.tool_id),
+                "tool_id": parsed.tool_id,
+            }
+        )
+    elif parsed.attempts and not parsed.success:
+        errs.append("all attempted tool invocations failed")
 
     total_usage = state.get("token_usage", {}).get("researcher", 0) + tokens
     warn_thr = getattr(acfg, "token_usage_warn_threshold", 100_000)
@@ -260,9 +157,6 @@ async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) 
 
     await log.ainfo("node_exit", node="researcher", findings=len(new_findings))
 
-    if not any_success and selected_ids:
-        errs.append("all attempted tool invocations failed")
-
     return {
         "raw_findings": new_findings,
         "sources": new_sources,
@@ -270,7 +164,7 @@ async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) 
         "token_usage": {"researcher": tokens},
         "messages": [
             HumanMessage(content=user_content),
-            AIMessage(content=selection.model_dump_json()),
+            AIMessage(content=raw_out if isinstance(raw_out, str) else json.dumps(raw_out)),
         ],
         "errors": errs,
     }

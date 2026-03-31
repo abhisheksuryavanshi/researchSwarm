@@ -1,4 +1,51 @@
+import re
+
 from pydantic import BaseModel, Field, field_validator
+
+
+class InvocationAttempt(BaseModel):
+    tool_id: str
+    success: bool
+    latency_ms: float
+    error_message: str | None = None
+
+
+class ToolDiscoveryInput(BaseModel):
+    capability: str = ""
+    query: str
+    constraints: dict = Field(default_factory=dict)
+    gaps: list[str] = Field(default_factory=list)
+    agent_id: str = ""
+    session_id: str = ""
+    trace_id: str = ""
+
+    @field_validator("capability")
+    @classmethod
+    def capability_tag(cls, v: str) -> str:
+        s = (v or "").strip()
+        if not s:
+            return ""
+        if not re.match(r"^[a-z][a-z0-9_]*$", s):
+            raise ValueError(
+                "capability must be empty (search all) or match ^[a-z][a-z0-9_]*$"
+            )
+        return s
+
+    @field_validator("query")
+    @classmethod
+    def query_non_empty(cls, v: str) -> str:
+        if not (v or "").strip():
+            raise ValueError("query must be non-empty")
+        return v.strip()
+
+
+class ToolDiscoveryResult(BaseModel):
+    success: bool
+    tool_id: str | None = None
+    data: dict = Field(default_factory=dict)
+    source: dict = Field(default_factory=dict)
+    attempts: list[InvocationAttempt] = Field(default_factory=list)
+    error: str | None = None
 
 
 class ToolSelectionResponse(BaseModel):
