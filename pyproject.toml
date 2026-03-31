@@ -17,6 +17,11 @@ dependencies = [
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
     "alembic>=1.14",
+    "langgraph>=0.6.10,<0.7",
+    "langchain-core>=0.3",
+    "langchain>=0.3",
+    "langchain-google-genai>=2.0",
+    "langfuse>=2.0",
 ]
 
 [project.optional-dependencies]
@@ -34,7 +39,7 @@ testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.setuptools.packages.find]
-include = ["registry*"]
+include = ["registry*", "agents*"]
 
 [tool.ruff]
 target-version = "py311"

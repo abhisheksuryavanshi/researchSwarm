@@ -41,11 +41,12 @@ def create_app() -> FastAPI:
 
     application.add_middleware(RequestLoggingMiddleware)
 
-    from registry.routers import bind, health, register, search, stats
+    from registry.routers import bind, health, register, search, stats, usage
 
     application.include_router(register.router, tags=["registration"])
     application.include_router(search.router, tags=["search"])
     application.include_router(bind.router, tags=["binding"])
+    application.include_router(usage.router, tags=["usage"])
     application.include_router(health.router, tags=["health"])
     application.include_router(stats.router, tags=["stats"])
 

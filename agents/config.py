@@ -1,0 +1,37 @@
+from __future__ import annotations
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class AgentConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    llm_provider: str = "google"
+    llm_model: str = "gemini-2.0-flash"
+    llm_temperature: float = 0.1
+    llm_timeout_seconds: int = 30
+    llm_max_retries: int = 3
+    max_iterations: int = 3
+    graph_timeout_seconds: int = 60
+    registry_base_url: str = "http://localhost:8000"
+    google_api_key: str | None = None
+    langfuse_enabled: bool = True
+    langfuse_host: str = "http://localhost:3000"
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    token_usage_warn_threshold: int = Field(
+        default=100_000,
+        description="Summed token estimate threshold for warning logs.",
+    )
+
+    @field_validator("max_iterations")
+    @classmethod
+    def max_iterations_bounds(cls, v: int) -> int:
+        if not isinstance(v, int) or not (1 <= v <= 5):
+            raise ValueError("max_iterations must be between 1 and 5 inclusive")
+        return v

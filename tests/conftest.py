@@ -1,9 +1,11 @@
 import asyncio
 import os
+import uuid
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from langchain_core.messages import AIMessage
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
@@ -103,3 +105,131 @@ async def client(db_session) -> AsyncGenerator:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+class FakeStructuredLLM:
+    """Minimal ChatModel that only implements with_structured_output().ainvoke."""
+
+    def __init__(self, sequence: list):
+        self.sequence = list(sequence)
+        self._idx = 0
+
+    def with_structured_output(self, schema, include_raw=False):
+        parent = self
+
+        class Runnable:
+            async def ainvoke(self, messages, config=None):
+                if parent._idx >= len(parent.sequence):
+                    raise RuntimeError("no more fake LLM responses")
+                val = parent.sequence[parent._idx]
+                parent._idx += 1
+                raw = AIMessage(
+                    content="ok",
+                    usage_metadata={
+                        "input_tokens": 10,
+                        "output_tokens": 32,
+                        "total_tokens": 42,
+                    },
+                )
+                if include_raw:
+                    return {"parsed": val, "raw": raw}
+                return val
+
+        return Runnable()
+
+
+@pytest.fixture
+def agent_config():
+    from agents.config import AgentConfig
+
+    return AgentConfig.model_validate({"langfuse_enabled": False})
+
+
+@pytest.fixture
+def sample_research_state(agent_config):
+    from agents.state import merge_graph_defaults
+
+    return merge_graph_defaults(
+        {
+            "query": "What is X?",
+            "trace_id": str(uuid.uuid4()),
+            "session_id": "test-session",
+        },
+        agent_config.max_iterations,
+    )
+
+
+@pytest.fixture
+def mock_registry_client():
+    from agents.tools.registry_client import RegistryClient
+
+    reg = MagicMock(spec=RegistryClient)
+    reg.search = AsyncMock(
+        return_value={
+            "results": [
+                {
+                    "tool_id": "t1",
+                    "name": "one",
+                    "description": "d1",
+                    "capabilities": ["c"],
+                    "version": "1.0.0",
+                    "status": "active",
+                    "avg_latency_ms": 1.0,
+                },
+                {
+                    "tool_id": "t2",
+                    "name": "two",
+                    "description": "d2",
+                    "capabilities": ["c"],
+                    "version": "1.0.0",
+                    "status": "active",
+                    "avg_latency_ms": 2.0,
+                },
+                {
+                    "tool_id": "t3",
+                    "name": "three",
+                    "description": "d3",
+                    "capabilities": ["c"],
+                    "version": "1.0.0",
+                    "status": "active",
+                    "avg_latency_ms": 3.0,
+                },
+            ],
+            "total": 3,
+        }
+    )
+    reg.bind = AsyncMock(
+        return_value={
+            "endpoint": "https://example.test/t1",
+            "method": "POST",
+            "name": "t1",
+            "description": "d",
+            "args_schema": {},
+            "version": "1.0.0",
+            "return_schema": {},
+        }
+    )
+    reg.invoke = AsyncMock(
+        return_value={"url": "https://arxiv.org/abs/1", "title": "Paper One"},
+    )
+    reg.log_usage = AsyncMock(return_value=None)
+    return reg
+
+
+@pytest.fixture
+def mock_llm():
+    from agents.response_models import (
+        AnalysisResponse,
+        CritiqueResponse,
+        SynthesisResponse,
+        ToolSelectionResponse,
+    )
+
+    return FakeStructuredLLM(
+        [
+            ToolSelectionResponse(selected_tool_ids=["t1"], reasoning="best match"),
+            AnalysisResponse(analysis="## A\ncontent"),
+            CritiqueResponse(critique="good", critique_pass=True, gaps=[]),
+            SynthesisResponse(synthesis="## Answer\nSee [Paper](https://arxiv.org/abs/1)"),
+        ]
+    )
