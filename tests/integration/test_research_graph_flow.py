@@ -168,3 +168,28 @@ async def test_graph_busy_second_call(mock_registry_client):
     finally:
         async with graph_mod._run_lock:
             graph_mod._busy = False
+
+
+@pytest.mark.asyncio
+async def test_continuation_preserves_canonical_session_id(mock_registry_client):
+    from agents.graph import build_research_graph, invoke_research_graph_continuation
+
+    cfg = AgentConfig.model_validate({"langfuse_enabled": False, "max_iterations": 1})
+    llm = FakeStructuredLLM(
+        [
+            ToolSelectionResponse(selected_tool_ids=["t1"], reasoning="x"),
+            AnalysisResponse(analysis="a"),
+            CritiqueResponse(critique="c", critique_pass=True, gaps=[]),
+            SynthesisResponse(synthesis="s"),
+        ],
+    )
+    ctx: GraphContext = {"llm": llm, "registry": mock_registry_client, "agent_config": cfg}
+    graph = build_research_graph()
+    sid = str(uuid.uuid4())
+    tid = str(uuid.uuid4())
+    result = await invoke_research_graph_continuation(
+        graph,
+        {"query": "What?", "trace_id": tid, "session_id": sid},
+        ctx,
+    )
+    assert result["session_id"] == sid

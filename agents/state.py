@@ -77,6 +77,42 @@ def validate_graph_input(state: dict[str, Any]) -> None:
         raise ValueError("constraints must be a dict when provided")
 
 
+def validate_continuation_input(state: dict[str, Any]) -> None:
+    """Stricter validation for follow-up turns: canonical ``session_id`` must be a UUID string."""
+    validate_graph_input(state)
+    sid = state.get("session_id")
+    if not isinstance(sid, str):
+        raise ValueError("session_id must be a string for continuation")
+    try:
+        uuid.UUID(sid.strip())
+    except ValueError as e:
+        raise ValueError("session_id must be a valid UUID string for continuation") from e
+
+
+def merge_graph_continuation(state: dict[str, Any], default_max_iterations: int) -> dict[str, Any]:
+    """Merge defaults for a continuation run without minting a new ``session_id``."""
+    incoming = {k: v for k, v in state.items() if v is not None}
+    out: dict[str, Any] = {
+        "constraints": {},
+        "accumulated_context": [],
+        "messages": [],
+        "max_iterations": default_max_iterations,
+        "raw_findings": [],
+        "sources": [],
+        "analysis": "",
+        "critique": "",
+        "critique_pass": False,
+        "gaps": [],
+        "synthesis": "",
+        "iteration_count": 0,
+        "token_usage": {},
+        "errors": [],
+    }
+    out.update(incoming)
+    validate_continuation_input(out)
+    return out
+
+
 def merge_graph_defaults(state: dict[str, Any], default_max_iterations: int) -> dict[str, Any]:
     incoming = dict(state)
     explicit_client = incoming.pop("client_session_id", None)

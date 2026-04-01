@@ -22,6 +22,7 @@ dependencies = [
     "langchain>=0.3",
     "langchain-google-genai>=2.0",
     "langfuse>=2.0",
+    "redis[hiredis]>=5.0",
 ]
 
 [project.optional-dependencies]
@@ -39,7 +40,7 @@ testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
 
 [tool.setuptools.packages.find]
-include = ["registry*", "agents*"]
+include = ["registry*", "agents*", "conversation*"]
 
 [tool.ruff]
 target-version = "py311"

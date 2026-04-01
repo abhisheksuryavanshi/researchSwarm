@@ -21,8 +21,59 @@ async def lifespan(app: FastAPI):
     app.state.http_client = httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=2.0))
     await logger.ainfo("http_client_initialized")
 
+    app.state.conversation_coordinator = None
+    app.state._conversation_mysql = None
+    app.state._conversation_redis = None
+    try:
+        from agents.config import AgentConfig
+        from agents.graph import (
+            build_research_graph,
+            build_synthesizer_only_graph,
+            default_graph_context,
+        )
+        from conversation.config import ConversationSettings
+        from conversation.coordinator import ConversationCoordinator
+        from conversation.intent import IntentClassifier
+        from conversation.persistence.mysql_store import MysqlSessionStore
+        from conversation.persistence.redis_store import RedisSessionStore
+
+        cs = ConversationSettings()
+        mysql = MysqlSessionStore(cs.database_url)
+        redis_store = RedisSessionStore(
+            cs.redis_url,
+            lock_ttl_seconds=cs.turn_lock_ttl_seconds,
+            doc_ttl_seconds=cs.redis_working_set_ttl_seconds,
+        )
+        await redis_store.connect()
+        agent_cfg = AgentConfig()
+        ctx = default_graph_context(agent_cfg)
+        full = build_research_graph()
+        light = build_synthesizer_only_graph()
+        classifier = IntentClassifier(
+            ctx["llm"],
+            confidence_threshold=cs.intent_confidence_threshold,
+        )
+        app.state.conversation_coordinator = ConversationCoordinator(
+            cs,
+            mysql,
+            redis_store,
+            ctx,
+            full_graph_compiled=full,
+            light_graph_compiled=light,
+            intent_classifier=classifier,
+        )
+        app.state._conversation_mysql = mysql
+        app.state._conversation_redis = redis_store
+        await logger.ainfo("conversation_coordinator_initialized")
+    except Exception as exc:
+        await logger.awarning("conversation_coordinator_skipped", error=str(exc))
+
     yield
 
+    if getattr(app.state, "_conversation_redis", None) is not None:
+        await app.state._conversation_redis.close()
+    if getattr(app.state, "_conversation_mysql", None) is not None:
+        await app.state._conversation_mysql.dispose()
     await app.state.http_client.aclose()
     await logger.ainfo("shutdown_complete")
 
@@ -41,8 +92,10 @@ def create_app() -> FastAPI:
 
     application.add_middleware(RequestLoggingMiddleware)
 
+    from conversation.api.routes import router as conversation_router
     from registry.routers import bind, health, register, search, stats, usage
 
+    application.include_router(conversation_router, tags=["sessions"])
     application.include_router(register.router, tags=["registration"])
     application.include_router(search.router, tags=["search"])
     application.include_router(bind.router, tags=["binding"])
