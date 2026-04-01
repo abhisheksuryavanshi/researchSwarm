@@ -90,8 +90,13 @@ else
 fi
 
 # --- Migrations (uses sqlalchemy.url in alembic.ini) ---
-"${RUN[@]}" alembic upgrade head
-ok "Alembic migrations applied (alembic upgrade head)"
+# Lenient for local reruns: ignores MySQL "already exists" (1050) / duplicate column/key (1060/1061).
+if [[ "${RUN[0]}" == "uv" ]]; then
+  uv run python "$ROOT/scripts/alembic_upgrade_lenient.py"
+else
+  ./.venv/bin/python "$ROOT/scripts/alembic_upgrade_lenient.py"
+fi
+ok "Alembic upgrade step finished (lenient mode for duplicate objects — see script if warnings appeared)"
 
 # --- Seed ---
 if [[ "${RUN[0]}" == "uv" ]]; then

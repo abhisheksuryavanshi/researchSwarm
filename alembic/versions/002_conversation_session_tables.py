@@ -20,7 +20,7 @@ def upgrade() -> None:
     op.create_table(
         "session",
         sa.Column("id", sa.String(36), primary_key=True),
-        sa.Column("owner_principal_id", sa.Text(), nullable=False),
+        sa.Column("owner_principal_id", sa.String(767), nullable=False),
         sa.Column("tenant_id", sa.String(255), nullable=True),
         sa.Column("status", sa.String(32), nullable=False, server_default="active"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),

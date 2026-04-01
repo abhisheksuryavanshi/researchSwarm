@@ -1,3 +1,4 @@
+import logging
 import time
 import uuid
 
@@ -5,6 +6,13 @@ import structlog
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
+
+
+def _log_level_int(name: str) -> int:
+    """Map log level string to logging int for structlog filtering."""
+    key = (name or "INFO").upper()
+    level = getattr(logging, key, None)
+    return level if isinstance(level, int) else logging.INFO
 
 
 def configure_logging(log_level: str = "INFO") -> None:
@@ -21,9 +29,7 @@ def configure_logging(log_level: str = "INFO") -> None:
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            structlog.get_level_from_name(log_level)
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(_log_level_int(log_level)),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
         cache_logger_on_first_use=True,

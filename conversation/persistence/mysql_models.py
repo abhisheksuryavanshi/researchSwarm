@@ -16,7 +16,6 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    Text,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.mysql import JSON as MySQLJSON
@@ -32,7 +31,8 @@ class SessionRow(Base):
     __table_args__ = (Index("ix_session_owner_created", "owner_principal_id", "created_at"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    owner_principal_id: Mapped[str] = mapped_column(Text, nullable=False)
+    # VARCHAR so MySQL can index (TEXT/BLOB requires a prefix length in indexes).
+    owner_principal_id: Mapped[str] = mapped_column(String(767), nullable=False)
     tenant_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

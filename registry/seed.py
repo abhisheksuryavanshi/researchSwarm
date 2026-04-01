@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from registry.config import settings
-from registry.database import async_session_factory
+from registry.database import async_session_factory, engine
 from registry.models import Tool, ToolCapability
 
 logger = structlog.get_logger()
@@ -276,6 +276,7 @@ async def main():
     await log.ainfo("seed_started")
     count = await seed()
     await log.ainfo("seed_completed", tools_created=count, total_seed_tools=len(SEED_TOOLS))
+    await engine.dispose()
 
 
 if __name__ == "__main__":
