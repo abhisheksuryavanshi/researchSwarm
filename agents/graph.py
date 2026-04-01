@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
+import structlog
+import structlog.contextvars
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END, START, StateGraph
 
@@ -14,6 +16,12 @@ from agents.nodes.synthesizer import synthesizer_node
 from agents.state import ResearchState, merge_graph_defaults
 from agents.tools.discovery import ToolDiscoveryTool
 from agents.tools.registry_client import RegistryClient
+from agents.tracing import (
+    bind_langfuse_run_enabled,
+    bind_trace_excerpt_max,
+    reset_langfuse_run_enabled,
+    reset_trace_excerpt_max,
+)
 
 
 class GraphBusyError(RuntimeError):
@@ -82,9 +90,28 @@ async def invoke_research_graph(
         if _busy:
             raise GraphBusyError("Research graph is already executing")
         _busy = True
+    excerpt_tok = bind_trace_excerpt_max(context["agent_config"].trace_excerpt_max_chars)
+    lf_tok = bind_langfuse_run_enabled(context["agent_config"].langfuse_enabled)
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(
+        session_id=merged["session_id"],
+        trace_id=merged["trace_id"],
+        client_session_id=merged.get("client_session_id"),
+        agent_id="graph",
+    )
+    log = structlog.get_logger()
     try:
+        await log.ainfo(
+            "graph_invoke_start",
+            query_preview=str(merged.get("query", ""))[:200],
+        )
         async with asyncio.timeout(context["agent_config"].graph_timeout_seconds):
-            return await compiled.ainvoke(merged, context=context)
+            result = await compiled.ainvoke(merged, context=context)
+        await log.ainfo("graph_invoke_complete")
+        return result
     finally:
+        structlog.contextvars.clear_contextvars()
+        reset_trace_excerpt_max(excerpt_tok)
+        reset_langfuse_run_enabled(lf_tok)
         async with _run_lock:
             _busy = False

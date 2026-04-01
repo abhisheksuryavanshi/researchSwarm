@@ -18,6 +18,7 @@ class ToolDiscoveryInput(BaseModel):
     agent_id: str = ""
     session_id: str = ""
     trace_id: str = ""
+    client_session_id: str | None = None
 
     @field_validator("capability")
     @classmethod

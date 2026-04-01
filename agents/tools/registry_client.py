@@ -81,6 +81,11 @@ class RegistryClient:
         success: bool,
         error_message: str | None = None,
     ) -> None:
+        """POST usage to the registry (best-effort).
+
+        ``session_id`` MUST be the **canonical** server-issued id from graph state,
+        not a client hint alone (see ``client_session_id`` on ``ResearchState``).
+        """
         body = {
             "tool_id": tool_id,
             "agent_id": agent_id,

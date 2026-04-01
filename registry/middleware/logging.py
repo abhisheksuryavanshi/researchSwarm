@@ -41,12 +41,17 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         Assures each API call is accurately measured and monitored.
         """
         trace_id = request.headers.get("x-trace-id", str(uuid.uuid4()))
-        session_id = request.headers.get("x-session-id", "")
+        raw_client_session = request.headers.get("x-session-id")
+        client_session_id = (
+            raw_client_session.strip()
+            if isinstance(raw_client_session, str) and raw_client_session.strip()
+            else None
+        )
 
         structlog.contextvars.clear_contextvars()
         structlog.contextvars.bind_contextvars(
             trace_id=trace_id,
-            session_id=session_id,
+            client_session_id=client_session_id,
         )
 
         logger = structlog.get_logger()

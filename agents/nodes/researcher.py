@@ -12,7 +12,7 @@ from agents.prompts import researcher as prompts
 from agents.response_models import ToolDiscoveryInput, ToolDiscoveryResult
 from agents.state import ResearchState
 from agents.tools.discovery import ToolDiscoveryTool, _search_summary
-from agents.tracing import get_logger, get_tracer
+from agents.tracing import get_logger, get_tracer, llm_invoke_config
 
 
 async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) -> dict[str, Any]:
@@ -21,11 +21,16 @@ async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) 
     registry = ctx["registry"]
     acfg = ctx["agent_config"]
 
-    log = get_logger(state["trace_id"], state["session_id"], "researcher")
+    log = get_logger(
+        state["trace_id"],
+        state["session_id"],
+        "researcher",
+        state.get("client_session_id"),
+    )
     callbacks = []
-    if (t := get_tracer(acfg)) is not None:
+    if (t := get_tracer(acfg, trace_id=state["trace_id"])) is not None:
         callbacks.append(t)
-    cb_cfg: dict[str, Any] = {"callbacks": callbacks} if callbacks else {}
+    cb_cfg = llm_invoke_config(state, callbacks)
 
     await log.ainfo("node_enter", node="researcher")
 
@@ -95,12 +100,13 @@ async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) 
         agent_id="researcher",
         session_id=state["session_id"],
         trace_id=state["trace_id"],
+        client_session_id=state.get("client_session_id"),
     )
 
     try:
         raw_out = await tool_discovery.ainvoke(
             td_input.model_dump(),
-            config=cb_cfg or None,
+            config=cb_cfg if cb_cfg else None,
         )
     except Exception as exc:
         await log.aerror("tool_discovery_failed", error=str(exc), exc_info=True)
