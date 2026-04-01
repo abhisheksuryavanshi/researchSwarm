@@ -12,6 +12,7 @@ from agents.nodes.critic import critic_node, route_after_critic
 from agents.nodes.researcher import researcher_node
 from agents.nodes.synthesizer import synthesizer_node
 from agents.state import ResearchState, merge_graph_defaults
+from agents.tools.discovery import ToolDiscoveryTool
 from agents.tools.registry_client import RegistryClient
 
 
@@ -37,10 +38,17 @@ def create_default_llm(config: AgentConfig) -> ChatGoogleGenerativeAI:
 
 def default_graph_context(config: AgentConfig | None = None) -> GraphContext:
     cfg = config or AgentConfig()
+    llm = create_default_llm(cfg)
+    registry = RegistryClient(cfg)
     return GraphContext(
-        llm=create_default_llm(cfg),
-        registry=RegistryClient(cfg),
+        llm=llm,
+        registry=registry,
         agent_config=cfg,
+        tool_discovery=ToolDiscoveryTool(
+            registry=registry,
+            llm=llm,
+            config=cfg,
+        ),
     )
 
 

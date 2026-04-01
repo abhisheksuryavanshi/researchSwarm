@@ -19,6 +19,8 @@ class AgentConfig(BaseSettings):
     max_iterations: int = 3
     graph_timeout_seconds: int = 60
     registry_base_url: str = "http://localhost:8000"
+    tool_invocation_timeout_seconds: int = 30
+    max_tool_fallback_attempts: int = 3
     google_api_key: str | None = None
     langfuse_enabled: bool = True
     langfuse_host: str = "http://localhost:3000"
@@ -34,4 +36,18 @@ class AgentConfig(BaseSettings):
     def max_iterations_bounds(cls, v: int) -> int:
         if not isinstance(v, int) or not (1 <= v <= 5):
             raise ValueError("max_iterations must be between 1 and 5 inclusive")
+        return v
+
+    @field_validator("tool_invocation_timeout_seconds")
+    @classmethod
+    def tool_timeout_bounds(cls, v: int) -> int:
+        if not isinstance(v, int) or v < 1:
+            raise ValueError("tool_invocation_timeout_seconds must be >= 1")
+        return v
+
+    @field_validator("max_tool_fallback_attempts")
+    @classmethod
+    def max_fallback_bounds(cls, v: int) -> int:
+        if not isinstance(v, int) or not (1 <= v <= 10):
+            raise ValueError("max_tool_fallback_attempts must be between 1 and 10 inclusive")
         return v
