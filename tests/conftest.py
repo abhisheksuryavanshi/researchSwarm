@@ -52,7 +52,10 @@ async def setup_database():
 
     from sqlalchemy.ext.asyncio import create_async_engine
 
+    from conversation.persistence import mysql_models as _conversation_mysql_models  # noqa: F401
     from registry.database import Base
+
+    _ = _conversation_mysql_models  # register session tables on Base.metadata
 
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
     async with engine.begin() as conn:

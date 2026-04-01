@@ -1,10 +1,15 @@
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from alembic import context
+from conversation.persistence.mysql_models import (  # noqa: F401
+    ResearchSnapshotRow,
+    SessionRow,
+    SessionTurnRow,
+)
 from registry.database import Base
 from registry.models import Tool, ToolCapability, ToolUsageLog  # noqa: F401
 
