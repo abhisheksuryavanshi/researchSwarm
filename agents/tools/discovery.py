@@ -6,7 +6,6 @@ import re
 import time
 from typing import Any, Type
 
-import structlog
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool, StructuredTool
@@ -21,6 +20,13 @@ from agents.response_models import (
     ToolSelectionResponse,
 )
 from agents.tools.registry_client import RegistryClient
+from agents.tracing import (
+    current_trace_excerpt_max,
+    get_logger,
+    is_langfuse_run_enabled,
+    langfuse_run_metadata_dict,
+    truncate_for_trace,
+)
 
 
 def fallback_for_type(
@@ -276,13 +282,16 @@ class ToolDiscoveryTool(BaseTool):
 
     async def _arun(self, **kwargs: Any) -> str:
         inp = ToolDiscoveryInput.model_validate(kwargs)
-        log = structlog.get_logger().bind(
-            trace_id=inp.trace_id or "-",
-            session_id=inp.session_id or "-",
-            agent_id=inp.agent_id or "tool_discovery",
+        log = get_logger(
+            inp.trace_id or "-",
+            inp.session_id or "-",
+            inp.agent_id or "tool_discovery",
+            inp.client_session_id,
         )
         cap = inp.capability or None
         attempts: list[InvocationAttempt] = []
+
+        await log.ainfo("tool_discovery_enter", capability=cap or "")
 
         try:
             search_payload = await self._registry.search(
@@ -325,6 +334,11 @@ class ToolDiscoveryTool(BaseTool):
         cb_cfg: dict[str, Any] = {}
         if self._extra_callbacks:
             cb_cfg["callbacks"] = self._extra_callbacks
+            cb_cfg["metadata"] = langfuse_run_metadata_dict(
+                session_id=inp.session_id,
+                trace_id=inp.trace_id,
+                client_session_id=inp.client_session_id,
+            )
 
         selection: ToolSelectionResponse | None = None
         try:
@@ -377,6 +391,8 @@ class ToolDiscoveryTool(BaseTool):
             success = False
             err_msg: str | None = None
             raw_data: dict[str, Any] = {}
+            span_obj: Any = None
+            max_c = current_trace_excerpt_max()
             try:
                 dyn = build_dynamic_tool(
                     bind_info, self._registry, timeout_seconds=timeout_s
@@ -387,6 +403,33 @@ class ToolDiscoveryTool(BaseTool):
                     gaps=gaps,
                     args_schema=bind_info.get("args_schema"),
                 )
+                if is_langfuse_run_enabled():
+                    try:
+                        from langfuse import get_client
+                        from langfuse.types import TraceContext
+
+                        lf = get_client()
+                        if lf:
+                            span_obj = lf.start_observation(
+                                trace_context=TraceContext(trace_id=inp.trace_id),
+                                name=f"tool:{tool_id}",
+                                as_type="tool",
+                                input=truncate_for_trace(
+                                    json.dumps(payload, default=str),
+                                    max_c,
+                                ),
+                                metadata={
+                                    **langfuse_run_metadata_dict(
+                                        session_id=inp.session_id,
+                                        trace_id=inp.trace_id,
+                                        client_session_id=inp.client_session_id,
+                                    ),
+                                    "tool_id": tool_id,
+                                    "agent_id": inp.agent_id or "tool_discovery",
+                                },
+                            )
+                    except Exception:
+                        span_obj = None
                 async with asyncio.timeout(timeout_s):
                     out = await dyn.ainvoke(payload)
                 raw_data = out if isinstance(out, dict) else {"result": out}
@@ -400,6 +443,22 @@ class ToolDiscoveryTool(BaseTool):
                     exc_info=True,
                 )
             finally:
+                if span_obj is not None:
+                    try:
+                        if success:
+                            span_obj.update(
+                                output=truncate_for_trace(
+                                    json.dumps(raw_data, default=str),
+                                    max_c,
+                                )
+                            ).end()
+                        else:
+                            span_obj.update(
+                                level="ERROR",
+                                status_message=err_msg or "invoke failed",
+                            ).end()
+                    except Exception:
+                        pass
                 latency_ms = (time.perf_counter() - start) * 1000
                 attempts.append(
                     InvocationAttempt(

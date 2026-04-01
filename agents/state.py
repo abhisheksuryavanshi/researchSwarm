@@ -34,6 +34,7 @@ class ResearchState(TypedDict, total=False):
     messages: Annotated[list[AnyMessage], add_messages]
     trace_id: str
     session_id: str
+    client_session_id: str | None
     max_iterations: int
     raw_findings: Annotated[list[dict[str, Any]], operator.add]
     sources: Annotated[list[dict[str, str]], _dedupe_sources]
@@ -62,7 +63,11 @@ def validate_graph_input(state: dict[str, Any]) -> None:
 
     sid = state.get("session_id")
     if not isinstance(sid, str) or len(sid.strip()) == 0:
-        raise ValueError("session_id must be a non-empty string")
+        raise ValueError("session_id must be a server-issued non-empty string")
+
+    csid = state.get("client_session_id")
+    if csid is not None and not isinstance(csid, str):
+        raise ValueError("client_session_id must be a string when provided")
 
     mi = state.get("max_iterations", 3)
     if not isinstance(mi, int) or not (1 <= mi <= 5):
@@ -73,6 +78,18 @@ def validate_graph_input(state: dict[str, Any]) -> None:
 
 
 def merge_graph_defaults(state: dict[str, Any], default_max_iterations: int) -> dict[str, Any]:
+    incoming = dict(state)
+    explicit_client = incoming.pop("client_session_id", None)
+    legacy_session = incoming.pop("session_id", None)
+
+    client_session_id: str | None = None
+    if isinstance(explicit_client, str) and explicit_client.strip():
+        client_session_id = explicit_client.strip()
+    elif isinstance(legacy_session, str) and legacy_session.strip():
+        client_session_id = legacy_session.strip()
+
+    canonical_session_id = str(uuid.uuid4())
+
     out: dict[str, Any] = {
         "constraints": {},
         "accumulated_context": [],
@@ -88,7 +105,10 @@ def merge_graph_defaults(state: dict[str, Any], default_max_iterations: int) -> 
         "iteration_count": 0,
         "token_usage": {},
         "errors": [],
-        **state,
+        "session_id": canonical_session_id,
+        **incoming,
     }
+    if client_session_id is not None:
+        out["client_session_id"] = client_session_id
     validate_graph_input(out)
     return out

@@ -2,6 +2,7 @@ import asyncio
 import uuid
 
 import pytest
+from structlog.testing import capture_logs
 
 from agents.config import AgentConfig
 from agents.context import GraphContext
@@ -47,6 +48,33 @@ async def test_full_research_flow_with_loop_back(mock_registry_client):
     assert result["critique_pass"] is True
     u = result.get("token_usage") or {}
     assert "researcher" in u and "analyst" in u
+    assert uuid.UUID(result["session_id"])
+    assert result.get("client_session_id") == "int-session"
+
+
+@pytest.mark.asyncio
+async def test_full_flow_logs_contain_trace_and_session_ids(mock_registry_client):
+    cfg = AgentConfig.model_validate({"langfuse_enabled": False, "max_iterations": 1})
+    llm = FakeStructuredLLM(
+        [
+            ToolSelectionResponse(selected_tool_ids=["t1"], reasoning="x"),
+            AnalysisResponse(analysis="a"),
+            CritiqueResponse(critique="c", critique_pass=True, gaps=[]),
+            SynthesisResponse(synthesis="s"),
+        ],
+    )
+    ctx: GraphContext = {"llm": llm, "registry": mock_registry_client, "agent_config": cfg}
+    graph = build_research_graph()
+    tid = str(uuid.uuid4())
+    with capture_logs() as cap:
+        await invoke_research_graph(
+            graph,
+            {"query": "Q", "trace_id": tid, "session_id": "log-hint"},
+            ctx,
+        )
+    text = str(cap)
+    assert tid in text
+    assert "log-hint" in text
 
 
 @pytest.mark.asyncio

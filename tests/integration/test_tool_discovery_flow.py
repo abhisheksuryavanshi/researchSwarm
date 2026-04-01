@@ -2,7 +2,6 @@
 
 import pytest
 
-from agents.config import AgentConfig
 from agents.response_models import ToolSelectionResponse
 from agents.tools.discovery import ToolDiscoveryTool
 from tests.conftest import FakeStructuredLLM

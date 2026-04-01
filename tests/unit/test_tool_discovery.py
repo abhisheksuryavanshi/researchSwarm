@@ -1,5 +1,6 @@
 """Unit tests for ToolDiscoveryTool fallback and timeout behavior."""
 
+import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -121,3 +122,56 @@ async def test_max_attempts_cap(agent_config):
     )
     assert "false" in raw.lower() or '"success": false' in raw.lower()
     assert reg.invoke.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_log_usage_receives_canonical_session_not_only_client_hint(agent_config):
+    canonical = str(uuid.uuid4())
+    reg = MagicMock(spec=RegistryClient)
+    reg.search = AsyncMock(
+        return_value={
+            "results": [
+                {
+                    "tool_id": "t1",
+                    "name": "a",
+                    "description": "d",
+                    "capabilities": ["c"],
+                    "avg_latency_ms": 1.0,
+                },
+            ],
+        }
+    )
+    reg.bind = AsyncMock(
+        return_value={
+            "endpoint": "https://ex.test/t1",
+            "method": "POST",
+            "name": "t1",
+            "description": "d",
+            "args_schema": {},
+            "version": "1",
+            "return_schema": {},
+        }
+    )
+    reg.invoke = AsyncMock(return_value={"url": "https://ok", "title": "OK"})
+    reg.log_usage = AsyncMock(return_value=None)
+
+    llm = FakeStructuredLLM(
+        [ToolSelectionResponse(selected_tool_ids=["t1"], reasoning="x")],
+    )
+    tool = ToolDiscoveryTool(registry=reg, llm=llm, config=agent_config)
+    await tool.ainvoke(
+        {
+            "capability": "c",
+            "query": "q",
+            "constraints": {},
+            "gaps": [],
+            "agent_id": "researcher",
+            "session_id": canonical,
+            "trace_id": str(uuid.uuid4()),
+            "client_session_id": "browser-tab-xyz",
+        }
+    )
+    reg.log_usage.assert_awaited()
+    kw = reg.log_usage.await_args.kwargs
+    assert kw.get("session_id") == canonical
+    assert kw.get("session_id") != "browser-tab-xyz"

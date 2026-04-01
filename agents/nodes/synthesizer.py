@@ -10,18 +10,23 @@ from agents.context import GraphContext
 from agents.prompts import synthesizer as prompts
 from agents.response_models import SynthesisResponse
 from agents.state import ResearchState
-from agents.tracing import get_logger, get_tracer, tokens_from_raw_message
+from agents.tracing import get_logger, get_tracer, llm_invoke_config, tokens_from_raw_message
 
 
 async def synthesizer_node(state: ResearchState, runtime: Runtime[GraphContext]) -> dict[str, Any]:
     ctx = runtime.context
     llm = ctx["llm"]
     acfg = ctx["agent_config"]
-    log = get_logger(state["trace_id"], state["session_id"], "synthesizer")
+    log = get_logger(
+        state["trace_id"],
+        state["session_id"],
+        "synthesizer",
+        state.get("client_session_id"),
+    )
     callbacks = []
-    if (t := get_tracer(acfg)) is not None:
+    if (t := get_tracer(acfg, trace_id=state["trace_id"])) is not None:
         callbacks.append(t)
-    cb_cfg: dict[str, Any] = {"callbacks": callbacks} if callbacks else {}
+    cb_cfg = llm_invoke_config(state, callbacks)
 
     await log.ainfo("node_enter", node="synthesizer")
 
@@ -41,7 +46,7 @@ async def synthesizer_node(state: ResearchState, runtime: Runtime[GraphContext])
     try:
         out = await runnable.ainvoke(
             [SystemMessage(content=prompts.SYSTEM_PROMPT), HumanMessage(content=body)],
-            config=cb_cfg,
+            config=cb_cfg if cb_cfg else None,
         )
     except Exception as exc:
         await log.aerror("synthesizer_llm_failed", error=str(exc), exc_info=True)

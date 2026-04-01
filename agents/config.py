@@ -30,6 +30,10 @@ class AgentConfig(BaseSettings):
         default=100_000,
         description="Summed token estimate threshold for warning logs.",
     )
+    trace_excerpt_max_chars: int = Field(
+        default=2048,
+        description="Max characters for excerpts sent to external traces (e.g. Langfuse).",
+    )
 
     @field_validator("max_iterations")
     @classmethod

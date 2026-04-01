@@ -76,6 +76,37 @@ def test_merge_graph_defaults_and_optional_fields():
     assert m["constraints"] == {}
     assert m["iteration_count"] == 0
     assert m["max_iterations"] == 3
+    assert m.get("client_session_id") == "s1"
+    uuid.UUID(m["session_id"])  # canonical server session
+
+
+def test_merge_prefers_explicit_client_session_id_over_legacy_session_id():
+    tid = str(uuid.uuid4())
+    m = merge_graph_defaults(
+        {
+            "query": "why",
+            "trace_id": tid,
+            "session_id": "legacy",
+            "client_session_id": "explicit-client",
+        },
+        3,
+    )
+    assert m.get("client_session_id") == "explicit-client"
+    assert m["session_id"] != "legacy"
+
+
+def test_validate_rejects_non_string_client_session_id():
+    tid = str(uuid.uuid4())
+    with pytest.raises(ValueError, match="client_session_id"):
+        validate_graph_input(
+            {
+                "query": "q",
+                "trace_id": tid,
+                "session_id": str(uuid.uuid4()),
+                "client_session_id": 123,  # type: ignore[dict-item]
+                "max_iterations": 3,
+            }
+        )
 
 
 def test_research_state_is_typeddict():
