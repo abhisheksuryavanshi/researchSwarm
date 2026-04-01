@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.9+
 - Docker (or podman) for **Redis** if not already local; **MySQL** (often same instance as the registry)
 - Existing `researchSwarm` env: `uv sync` from repo root
 

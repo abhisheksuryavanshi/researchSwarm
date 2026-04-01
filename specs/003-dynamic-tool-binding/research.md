@@ -75,12 +75,12 @@
 
 **Unknown**: How to implement per-tool invocation timeout that's separate from the graph timeout?
 
-**Decision**: Use `asyncio.timeout(config.tool_invocation_timeout_seconds)` around each individual tool invocation (the httpx call). Default: 30 seconds. This timeout fires independently of the graph-level 60s timeout. When triggered, it raises `TimeoutError`, which the fallback loop catches and treats as a tool failure — triggering the next fallback attempt.
+**Decision**: Use `asyncio.wait_for(coro, timeout=config.tool_invocation_timeout_seconds)` around each individual tool invocation (the httpx call). Default: 30 seconds. This timeout fires independently of the graph-level 60s timeout. When triggered, it raises `asyncio.TimeoutError` (Python 3.9; unified with builtin `TimeoutError` from 3.10+), which the fallback loop catches and treats as a tool failure — triggering the next fallback attempt.
 
-**Rationale**: `asyncio.timeout()` (Python 3.11+) is the standard library mechanism for async timeouts. It wraps the httpx call cleanly. The 30s default matches the existing `llm_timeout_seconds` in AgentConfig and gives ample time for most tool endpoints while preventing indefinite hangs. The graph-level timeout remains the ultimate safety net.
+**Rationale**: The project targets Python 3.9+, where `asyncio.wait_for` is the portable stdlib mechanism for async timeouts (replacing `asyncio.timeout`, added in Python 3.11). The 30s default matches the existing `llm_timeout_seconds` in AgentConfig and gives ample time for most tool endpoints while preventing indefinite hangs. The graph-level timeout remains the ultimate safety net.
 
 **Alternatives considered**:
-- httpx timeout only: httpx has its own timeout, but it's configured at client creation time and can't be easily overridden per-call. `asyncio.timeout()` is more granular.
+- httpx timeout only: httpx has its own timeout, but it's configured at client creation time and can't be easily overridden per-call. `asyncio.wait_for` is more granular.
 - No per-tool timeout (rely on graph timeout only): A single slow tool could consume the entire 60s budget, leaving no time for fallback
 - Lower timeout (5s): Too aggressive for tools that legitimately take 10-20s (e.g., web scrapers)
 

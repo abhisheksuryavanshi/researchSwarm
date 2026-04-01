@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Optional, Protocol
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -14,7 +14,7 @@ class _LLMIntentSchema(BaseModel):
         description="One of: new_query, refinement, reformat, meta_question",
     )
     confidence: float = Field(ge=0.0, le=1.0)
-    rationale: str | None = None
+    rationale: Optional[str] = None
 
 
 class IntentClassifierProtocol(Protocol):
@@ -28,7 +28,7 @@ class IntentClassifier:
 
     def __init__(
         self,
-        llm: BaseChatModel | None,
+        llm: Optional[BaseChatModel],
         *,
         confidence_threshold: float = 0.55,
     ) -> None:

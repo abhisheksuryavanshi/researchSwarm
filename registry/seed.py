@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import Optional
 
 import structlog
 from sqlalchemy import select
@@ -212,7 +213,7 @@ SEED_TOOLS = [
 ]
 
 
-async def seed(session: AsyncSession | None = None) -> int:
+async def seed(session: Optional[AsyncSession] = None) -> int:
     """
     Idempotently populate the database with a predefined set of fundamental tools.
     Returns the number of freshly inserted tools.

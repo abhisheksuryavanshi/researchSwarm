@@ -16,7 +16,7 @@ development.
 
 ## Technical Context
 
-**Language/Version**: Python 3.11+
+**Language/Version**: Python 3.9+
 **Primary Dependencies**: FastAPI, SQLAlchemy 2.0+ (async), aiomysql,
 httpx, structlog, Pydantic v2, Alembic, uvicorn
 **Storage**: MySQL 8.0 (local Docker / AWS RDS)

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +12,7 @@ router = APIRouter()
 
 @router.get("/tools/search", response_model=ToolSearchResponse)
 async def search(
-    capability: str | None = Query(default=None),
+    capability: Optional[str] = Query(default=None),
     limit: int = Query(default=10, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
 ):

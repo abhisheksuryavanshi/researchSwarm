@@ -133,7 +133,7 @@
 
 - [X] T032 [P] [US1] Create synthesizer prompt templates in `agents/prompts/synthesizer.py` — SYSTEM_PROMPT (role: synthesize, cite sources, note limitations), USER_PROMPT (query + analysis + raw_findings + sources + critique + critique_pass + constraints + accumulated_context)
 - [X] T033 [US1] Implement synthesizer_node function in `agents/nodes/synthesizer.py` — call LLM with with_structured_output(SynthesisResponse), produce final markdown with citations, note limitations when critique_pass=False (FR-009), track token_usage, independent LLM calls (FR-008b)
-- [X] T034 [US1] Implement build_research_graph function in `agents/graph.py` — create StateGraph(ResearchState), add_node for all 4 agents, add_edge START→researcher, researcher→analyst, analyst→critic, add_conditional_edges critic→route_after_critic, add_edge synthesizer→END, enforce graph_timeout_seconds via asyncio.timeout, single-flight guard (`GraphBusyError` if busy), compile and return
+- [X] T034 [US1] Implement build_research_graph function in `agents/graph.py` — create StateGraph(ResearchState), add_node for all 4 agents, add_edge START→researcher, researcher→analyst, analyst→critic, add_conditional_edges critic→route_after_critic, add_edge synthesizer→END, enforce graph_timeout_seconds via asyncio.wait_for, single-flight guard (`GraphBusyError` if busy), compile and return
 - [X] T035 [US1] Add graph entry point in `agents/__init__.py` — export build_research_graph, ResearchState, AgentConfig for external consumers
 
 **Checkpoint**: Complete pipeline functional — full graph executes with all four agents, Critic loop-back, graph timeout, and single-execution guard. US1 acceptance scenarios testable.

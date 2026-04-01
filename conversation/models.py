@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -10,13 +10,13 @@ class SessionRecord(BaseModel):
     session_id: str
     owner_principal_id: str
     status: str
-    created_at: datetime | None = None
-    expires_at: datetime | None = None
+    created_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
 
 
 class TurnRequest(BaseModel):
     message: str = Field(min_length=1)
-    client_session_id: str | None = None
+    client_session_id: Optional[str] = None
 
 
 class TurnResult(BaseModel):
@@ -26,8 +26,8 @@ class TurnResult(BaseModel):
     intent_confidence: float
     degraded_mode: bool = False
     trace_id: str
-    route_mode: str | None = None
-    engine_entry: str | None = None
+    route_mode: Optional[str] = None
+    engine_entry: Optional[str] = None
 
 
 class IntentResult(BaseModel):
@@ -39,7 +39,7 @@ class IntentResult(BaseModel):
         "needs_clarification",
     ]
     confidence: float = Field(ge=0.0, le=1.0)
-    rationale: str | None = None
+    rationale: Optional[str] = None
     constraints_suggested: dict[str, Any] = Field(default_factory=dict)
 
 

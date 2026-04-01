@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import operator
 import uuid
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Optional, TypedDict
 
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
@@ -34,7 +34,7 @@ class ResearchState(TypedDict, total=False):
     messages: Annotated[list[AnyMessage], add_messages]
     trace_id: str
     session_id: str
-    client_session_id: str | None
+    client_session_id: Optional[str]
     max_iterations: int
     raw_findings: Annotated[list[dict[str, Any]], operator.add]
     sources: Annotated[list[dict[str, str]], _dedupe_sources]
@@ -118,7 +118,7 @@ def merge_graph_defaults(state: dict[str, Any], default_max_iterations: int) -> 
     explicit_client = incoming.pop("client_session_id", None)
     legacy_session = incoming.pop("session_id", None)
 
-    client_session_id: str | None = None
+    client_session_id: Optional[str] = None
     if isinstance(explicit_client, str) and explicit_client.strip():
         client_session_id = explicit_client.strip()
     elif isinstance(legacy_session, str) and legacy_session.strip():

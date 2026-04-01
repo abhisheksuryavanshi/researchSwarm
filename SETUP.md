@@ -15,7 +15,7 @@ This document is derived from the repository as it exists today (Python package 
 - **Persistence:** SQLAlchemy 2 async + `aiomysql`; Alembic migrations under `alembic/versions/`.
 - **Session layer:** `conversation/` — coordinator, intent classification, MySQL + Redis stores.
 
-**Tech stack (from `pyproject.toml`):** Python 3.11+, FastAPI, Uvicorn, SQLAlchemy 2 (async), aiomysql, httpx, structlog, pydantic-settings, Alembic, LangGraph, LangChain / LangChain-Google-GenAI, Langfuse, Redis (hiredis). Dev extras: pytest, pytest-asyncio, ruff, black, coverage.
+**Tech stack (from `pyproject.toml`):** Python 3.9+, FastAPI, Uvicorn, SQLAlchemy 2 (async), aiomysql, httpx, structlog, pydantic-settings, Alembic, LangGraph, LangChain / LangChain-Google-GenAI, Langfuse, Redis (hiredis). Dev extras: pytest, pytest-asyncio, ruff, black, coverage.
 
 ---
 
@@ -23,7 +23,7 @@ This document is derived from the repository as it exists today (Python package 
 
 | Tool | Minimum / notes |
 |------|------------------|
-| **Python** | 3.11+ (`requires-python = ">=3.11"` in `pyproject.toml`) |
+| **Python** | 3.9+ (`requires-python = ">=3.9"` in `pyproject.toml`; CI/local often use 3.9.6) |
 | **Docker Engine** | Recent version with **Docker Compose V2** (`docker compose` CLI) |
 | **Git** | Any recent version (clone) |
 | **Package manager** | Either **[uv](https://github.com/astral-sh/uv)** (lockfile `uv.lock` present) **or** **pip** with a virtualenv |
@@ -62,7 +62,7 @@ Values load from **environment variables** and/or a **`.env`** file in the repos
 | `LLM_TIMEOUT_SECONDS` | Per-call timeout | Integer ≥ 1 | `30` |
 | `LLM_MAX_RETRIES` | LLM retries | Integer ≥ 0 | `3` |
 | `MAX_ITERATIONS` | Graph iteration cap | Integer **1–5** | `3` |
-| `GRAPH_TIMEOUT_SECONDS` | `asyncio.timeout` around graph invoke | Integer ≥ 1 | `60` |
+| `GRAPH_TIMEOUT_SECONDS` | `asyncio.wait_for` around graph invoke | Integer ≥ 1 | `60` |
 | `REGISTRY_BASE_URL` | Base URL for registry HTTP client | HTTP(S) URL, no trailing path | `http://localhost:8000` |
 | `TOOL_INVOCATION_TIMEOUT_SECONDS` | Dynamic tool HTTP timeout | Integer ≥ 1 | `30` |
 | `MAX_TOOL_FALLBACK_ATTEMPTS` | Fallback attempts | Integer **1–10** | `3` |

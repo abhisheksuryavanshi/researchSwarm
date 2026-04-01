@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import secrets
-from typing import Any
+from typing import Any, Optional
 
 import redis.asyncio as redis
 
@@ -20,7 +20,7 @@ class RedisSessionStore:
         self._url = redis_url
         self._lock_ttl_ms = lock_ttl_seconds * 1000
         self._doc_ttl = doc_ttl_seconds
-        self._client: redis.Redis | None = None
+        self._client: Optional[redis.Redis] = None
 
     async def connect(self) -> None:
         if self._client is None:
@@ -45,7 +45,7 @@ class RedisSessionStore:
     def inbox_key(self, session_id: str) -> str:
         return f"session:{session_id}:inbox"
 
-    async def get_working_doc(self, session_id: str) -> dict[str, Any] | None:
+    async def get_working_doc(self, session_id: str) -> Optional[dict[str, Any]]:
         await self.connect()
         raw = await self._r().get(self.doc_key(session_id))
         if not raw:
@@ -64,7 +64,7 @@ class RedisSessionStore:
         await self.connect()
         await self._r().delete(self.doc_key(session_id))
 
-    async def acquire_turn_lock(self, session_id: str) -> str | None:
+    async def acquire_turn_lock(self, session_id: str) -> Optional[str]:
         """Return lock token if acquired, else None."""
         await self.connect()
         token = secrets.token_hex(16)
@@ -87,7 +87,7 @@ class RedisSessionStore:
         await self.connect()
         await self._r().rpush(self.inbox_key(session_id), payload)
 
-    async def inbox_pop_blocking(self, session_id: str, timeout_s: int = 1) -> str | None:
+    async def inbox_pop_blocking(self, session_id: str, timeout_s: int = 1) -> Optional[str]:
         await self.connect()
         out = await self._r().blpop(self.inbox_key(session_id), timeout=timeout_s)
         if out is None:

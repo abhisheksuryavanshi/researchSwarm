@@ -67,7 +67,7 @@ Single project: `agents/`, `tests/` at repository root (per plan.md).
 
 ## Phase 4: User Story 2 — Fallback on Tool Invocation Failure (Priority: P1)
 
-**Goal**: Sequential retries on LLM-ranked candidates (filled by latency ordering when needed), max 3 attempts, per-tool `asyncio.timeout`, per-attempt usage logs, structured failure when exhausted.
+**Goal**: Sequential retries on LLM-ranked candidates (filled by latency ordering when needed), max 3 attempts, per-tool `asyncio.wait_for`, per-attempt usage logs, structured failure when exhausted.
 
 **Independent Test**: First two mocked tools fail (timeout / HTTP error); third succeeds; `attempts` length and `log_usage` call counts match spec.
 
@@ -77,7 +77,7 @@ Single project: `agents/`, `tests/` at repository root (per plan.md).
 
 ### Implementation for User Story 2
 
-- [x] T012 [US2] Wrap each dynamic tool invocation in `asyncio.timeout(config.tool_invocation_timeout_seconds)` and implement fallback loop up to `config.max_tool_fallback_attempts` in `agents/tools/discovery.py` per `specs/003-dynamic-tool-binding/research.md`
+- [x] T012 [US2] Wrap each dynamic tool invocation in `asyncio.wait_for(..., timeout=config.tool_invocation_timeout_seconds)` and implement fallback loop up to `config.max_tool_fallback_attempts` in `agents/tools/discovery.py` per `specs/003-dynamic-tool-binding/research.md`
 - [x] T013 [US2] On exhausted attempts, return `ToolDiscoveryResult` with populated `attempts`, `success=False`, and summary `error`; ensure failed and successful attempts are each logged via `RegistryClient.log_usage` in `agents/tools/discovery.py`
 
 **Checkpoint**: Resilient invocation path matches US2 acceptance scenarios.

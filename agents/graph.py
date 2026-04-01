@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Optional
 
 import structlog
 import structlog.contextvars
@@ -44,7 +45,7 @@ def create_default_llm(config: AgentConfig) -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(**kwargs)
 
 
-def default_graph_context(config: AgentConfig | None = None) -> GraphContext:
+def default_graph_context(config: Optional[AgentConfig] = None) -> GraphContext:
     cfg = config or AgentConfig()
     llm = create_default_llm(cfg)
     registry = RegistryClient(cfg)
@@ -115,8 +116,10 @@ async def invoke_research_graph_continuation(
             "graph_continuation_start",
             query_preview=str(merged.get("query", ""))[:200],
         )
-        async with asyncio.timeout(context["agent_config"].graph_timeout_seconds):
-            result = await compiled.ainvoke(merged, context=context)
+        result = await asyncio.wait_for(
+            compiled.ainvoke(merged, context=context),
+            timeout=context["agent_config"].graph_timeout_seconds,
+        )
         await log.ainfo("graph_continuation_complete")
         return result
     finally:
@@ -163,8 +166,10 @@ async def invoke_research_graph(
             "graph_invoke_start",
             query_preview=str(merged.get("query", ""))[:200],
         )
-        async with asyncio.timeout(context["agent_config"].graph_timeout_seconds):
-            result = await compiled.ainvoke(merged, context=context)
+        result = await asyncio.wait_for(
+            compiled.ainvoke(merged, context=context),
+            timeout=context["agent_config"].graph_timeout_seconds,
+        )
         await log.ainfo("graph_invoke_complete")
         return result
     finally:

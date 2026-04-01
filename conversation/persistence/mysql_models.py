@@ -6,7 +6,7 @@ registry engine share one metadata (single MySQL database).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional, Union
 
 from sqlalchemy import (
     BigInteger,
@@ -33,11 +33,11 @@ class SessionRow(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     owner_principal_id: Mapped[str] = mapped_column(Text, nullable=False)
-    tenant_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     turns: Mapped[list["SessionTurnRow"]] = relationship(back_populates="session")
     snapshots: Mapped[list["ResearchSnapshotRow"]] = relationship(back_populates="session")
@@ -59,14 +59,16 @@ class SessionTurnRow(Base):
     )
     turn_index: Mapped[int] = mapped_column(Integer, nullable=False)
     role: Mapped[str] = mapped_column(String(32), nullable=False)
-    content: Mapped[dict[str, Any] | list[Any] | str | float | bool | None] = mapped_column(
+    content: Mapped[
+        Union[dict[str, Any], list[Any], str, float, bool, None]
+    ] = mapped_column(
         MySQLJSON,
         nullable=False,
     )
-    intent: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    intent_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
-    trace_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    intent: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    intent_confidence: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    trace_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    idempotency_key: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     session: Mapped["SessionRow"] = relationship(back_populates="turns")

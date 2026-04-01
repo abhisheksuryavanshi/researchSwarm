@@ -1,4 +1,5 @@
 import re
+from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -7,7 +8,7 @@ class InvocationAttempt(BaseModel):
     tool_id: str
     success: bool
     latency_ms: float
-    error_message: str | None = None
+    error_message: Optional[str] = None
 
 
 class ToolDiscoveryInput(BaseModel):
@@ -18,7 +19,7 @@ class ToolDiscoveryInput(BaseModel):
     agent_id: str = ""
     session_id: str = ""
     trace_id: str = ""
-    client_session_id: str | None = None
+    client_session_id: Optional[str] = None
 
     @field_validator("capability")
     @classmethod
@@ -42,11 +43,11 @@ class ToolDiscoveryInput(BaseModel):
 
 class ToolDiscoveryResult(BaseModel):
     success: bool
-    tool_id: str | None = None
+    tool_id: Optional[str] = None
     data: dict = Field(default_factory=dict)
     source: dict = Field(default_factory=dict)
     attempts: list[InvocationAttempt] = Field(default_factory=list)
-    error: str | None = None
+    error: Optional[str] = None
 
 
 class ToolSelectionResponse(BaseModel):

@@ -150,7 +150,7 @@ def route_after_critic(state: ResearchState) -> Literal["researcher", "synthesiz
 
 **Decision**: Retry with exponential backoff up to `llm_max_retries`. Enforce a per-graph total timeout of 60s. If cumulative wall time exceeds the budget, abort remaining nodes.
 
-**Rationale**: Rate-limiting (HTTP 429) is transient and recoverable with backoff. However, unbounded retries could blow past the 60s budget. The per-graph timeout (tracked via `asyncio.timeout()` or similar) acts as a hard ceiling. When triggered, the graph returns partial results with a timeout error in `errors` — the Synthesizer can still produce partial output.
+**Rationale**: Rate-limiting (HTTP 429) is transient and recoverable with backoff. However, unbounded retries could blow past the 60s budget. The per-graph timeout (tracked via `asyncio.wait_for(..., timeout=...)` or similar) acts as a hard ceiling. When triggered, the graph returns partial results with a timeout error in `errors` — the Synthesizer can still produce partial output.
 
 **Alternatives considered**:
 - Retry without graph timeout: Risk of 5+ minute hangs during sustained rate limiting

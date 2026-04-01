@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Any, Optional
 
 import structlog
 import structlog.contextvars
@@ -64,8 +64,8 @@ class ConversationCoordinator:
         graph_context: GraphContext,
         *,
         full_graph_compiled: Any,
-        light_graph_compiled: Any | None = None,
-        intent_classifier: IntentClassifier | None = None,
+        light_graph_compiled: Optional[Any] = None,
+        intent_classifier: Optional[IntentClassifier] = None,
     ) -> None:
         self._settings = settings
         self._mysql = mysql
@@ -85,8 +85,8 @@ class ConversationCoordinator:
         session_id: str,
         message: str,
         trace_id: str,
-        client_session_id: str | None = None,
-        idempotency_key: str | None = None,
+        client_session_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> TurnResult:
         log = structlog.get_logger()
         structlog.contextvars.clear_contextvars()
@@ -108,7 +108,7 @@ class ConversationCoordinator:
 
         fp = body_fingerprint(message, client_session_id)
 
-        token: str | None = None
+        token: Optional[str] = None
         try:
             for _ in range(200):
                 token = await self._redis.acquire_turn_lock(session_id)

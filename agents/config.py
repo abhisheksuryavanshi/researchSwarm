@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -21,11 +23,11 @@ class AgentConfig(BaseSettings):
     registry_base_url: str = "http://localhost:8000"
     tool_invocation_timeout_seconds: int = 30
     max_tool_fallback_attempts: int = 3
-    google_api_key: str | None = None
+    google_api_key: Optional[str] = None
     langfuse_enabled: bool = True
     langfuse_host: str = "http://localhost:3000"
-    langfuse_public_key: str | None = None
-    langfuse_secret_key: str | None = None
+    langfuse_public_key: Optional[str] = None
+    langfuse_secret_key: Optional[str] = None
     token_usage_warn_threshold: int = Field(
         default=100_000,
         description="Summed token estimate threshold for warning logs.",

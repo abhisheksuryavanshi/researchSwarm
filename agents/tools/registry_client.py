@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 import structlog
@@ -14,8 +14,8 @@ class RegistryClient:
     def __init__(
         self,
         config: AgentConfig,
-        client: httpx.AsyncClient | None = None,
-        tool_client: httpx.AsyncClient | None = None,
+        client: Optional[httpx.AsyncClient] = None,
+        tool_client: Optional[httpx.AsyncClient] = None,
     ) -> None:
         self._config = config
         self._own_registry = client is None
@@ -38,9 +38,9 @@ class RegistryClient:
 
     async def search(
         self,
-        capability: str | None = None,
+        capability: Optional[str] = None,
         limit: int = 10,
-        constraints: dict[str, Any] | None = None,
+        constraints: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {"limit": limit}
         if capability:
@@ -58,7 +58,7 @@ class RegistryClient:
         return r.json()
 
     async def invoke(
-        self, endpoint: str, method: str, payload: dict[str, Any] | None = None
+        self, endpoint: str, method: str, payload: Optional[dict[str, Any]] = None
     ) -> dict[str, Any]:
         m = method.upper()
         if m == "POST":
@@ -75,11 +75,11 @@ class RegistryClient:
     async def log_usage(
         self,
         tool_id: str,
-        agent_id: str | None,
-        session_id: str | None,
+        agent_id: Optional[str],
+        session_id: Optional[str],
         latency_ms: float,
         success: bool,
-        error_message: str | None = None,
+        error_message: Optional[str] = None,
     ) -> None:
         """POST usage to the registry (best-effort).
 

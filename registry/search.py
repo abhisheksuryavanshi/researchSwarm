@@ -1,3 +1,5 @@
+from typing import Optional
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,7 +8,7 @@ from registry.models import Tool, ToolCapability
 
 async def search_tools(
     db: AsyncSession,
-    capability: str | None = None,
+    capability: Optional[str] = None,
     limit: int = 10,
 ) -> list[dict]:
     """

@@ -17,6 +17,8 @@ adds ``session``, ``session_turn``, and ``research_snapshot`` tables.
 
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -37,4 +39,4 @@ class ConversationSettings(BaseSettings):
     intent_confidence_threshold: float = Field(default=0.55, ge=0.0, le=1.0)
     turn_lock_ttl_seconds: int = Field(default=120, ge=5, le=3600)
     redis_working_set_ttl_seconds: int = Field(default=86400, ge=60, le=86400 * 30)
-    google_api_key: str | None = Field(default=None)
+    google_api_key: Optional[str] = Field(default=None)

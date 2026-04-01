@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.9+
 - Running Tool Registry Service (see registry quickstart)
 - Google GenAI API key (`GOOGLE_API_KEY` env var)
 - Optional: Langfuse instance for tracing

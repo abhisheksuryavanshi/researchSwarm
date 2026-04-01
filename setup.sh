@@ -26,10 +26,10 @@ if ! docker compose version >/dev/null 2>&1; then
   fail "Docker Compose V2 required (docker compose). Install Docker Desktop or docker-compose-plugin."
 fi
 need_cmd python3
-python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' \
-  || fail "Python 3.11+ required (found: $(python3 -V 2>&1))"
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' \
+  || fail "Python 3.9+ required (found: $(python3 -V 2>&1))"
 
-ok "Prerequisite commands found (git, docker compose, python3 >= 3.11)"
+ok "Prerequisite commands found (git, docker compose, python3 >= 3.9)"
 
 # --- .env ---
 if [[ -f .env ]]; then

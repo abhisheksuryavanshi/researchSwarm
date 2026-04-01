@@ -4,7 +4,7 @@ import asyncio
 import json
 import re
 import time
-from typing import Any, Type
+from typing import Any, Optional, Type
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -30,7 +30,7 @@ from agents.tracing import (
 
 
 def fallback_for_type(
-    type_name: str | None, query: str, constraints: dict[str, Any]
+    type_name: Optional[str], query: str, constraints: dict[str, Any]
 ) -> Any:
     if type_name == "string":
         return query
@@ -52,7 +52,7 @@ def build_tool_payload(
     query: str,
     constraints: dict[str, Any],
     gaps: list[str],
-    args_schema: dict[str, Any] | None,
+    args_schema: Optional[dict[str, Any]],
 ) -> dict[str, Any]:
     schema = args_schema if isinstance(args_schema, dict) else {}
     properties = (
@@ -139,7 +139,7 @@ class GenericToolInput(BaseModel):
 
 
 def _args_schema_to_model(
-    tool_name: str, args_schema: dict[str, Any] | None
+    tool_name: str, args_schema: Optional[dict[str, Any]]
 ) -> Type[BaseModel]:
     if not isinstance(args_schema, dict):
         return GenericToolInput
@@ -175,8 +175,10 @@ def build_dynamic_tool(
 
     async def _invoke(**kwargs: Any) -> dict[str, Any]:
         payload = dict(kwargs)
-        async with asyncio.timeout(timeout_seconds):
-            return await registry.invoke(endpoint, method, payload)
+        return await asyncio.wait_for(
+            registry.invoke(endpoint, method, payload),
+            timeout=timeout_seconds,
+        )
 
     return StructuredTool.from_function(
         coroutine=_invoke,
@@ -218,7 +220,7 @@ def _filter_results_by_constraints(
 
 def _ordered_candidates(
     results: list[dict[str, Any]],
-    selection: ToolSelectionResponse | None,
+    selection: Optional[ToolSelectionResponse],
     max_attempts: int,
 ) -> list[str]:
     by_latency = sorted(
@@ -250,7 +252,9 @@ def _wrap_tool_data(raw: dict[str, Any], tool_id: str, success: bool) -> dict[st
     }
 
 
-def _source_from_data(data: dict[str, Any], tool_id: str, bind_name: str | None) -> dict[str, str]:
+def _source_from_data(
+    data: dict[str, Any], tool_id: str, bind_name: Optional[str]
+) -> dict[str, str]:
     url = str(data.get("url") or data.get("link") or f"https://tool/{tool_id}")
     title = str(data.get("title") or bind_name or tool_id)
     return {"url": url, "title": title, "tool_id": tool_id}
@@ -269,7 +273,7 @@ class ToolDiscoveryTool(BaseTool):
         llm: BaseChatModel,
         config: AgentConfig,
         *,
-        callbacks: list[Any] | None = None,
+        callbacks: Optional[list[Any]] = None,
     ) -> None:
         super().__init__()
         self._registry = registry
@@ -340,7 +344,7 @@ class ToolDiscoveryTool(BaseTool):
                 client_session_id=inp.client_session_id,
             )
 
-        selection: ToolSelectionResponse | None = None
+        selection: Optional[ToolSelectionResponse] = None
         try:
             runnable = self._llm.with_structured_output(
                 ToolSelectionResponse, include_raw=True
@@ -375,7 +379,7 @@ class ToolDiscoveryTool(BaseTool):
         constraints_d = inp.constraints if isinstance(inp.constraints, dict) else {}
 
         for tool_id in candidates:
-            bind_info: dict[str, Any] | None = None
+            bind_info: Optional[dict[str, Any]] = None
             try:
                 bind_info = await self._registry.bind(tool_id)
             except Exception as exc:
@@ -389,7 +393,7 @@ class ToolDiscoveryTool(BaseTool):
 
             start = time.perf_counter()
             success = False
-            err_msg: str | None = None
+            err_msg: Optional[str] = None
             raw_data: dict[str, Any] = {}
             span_obj: Any = None
             max_c = current_trace_excerpt_max()
@@ -430,8 +434,7 @@ class ToolDiscoveryTool(BaseTool):
                             )
                     except Exception:
                         span_obj = None
-                async with asyncio.timeout(timeout_s):
-                    out = await dyn.ainvoke(payload)
+                out = await asyncio.wait_for(dyn.ainvoke(payload), timeout=timeout_s)
                 raw_data = out if isinstance(out, dict) else {"result": out}
                 success = True
             except Exception as exc:
