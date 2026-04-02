@@ -18,6 +18,14 @@ class AgentConfig(BaseSettings):
     llm_temperature: float = 0.1
     llm_timeout_seconds: int = 30
     llm_max_retries: int = 3
+    llm_retries_enabled: bool = Field(
+        default=False,
+        description=(
+            "Global switch for LangChain/Google client HTTP retries on failed LLM calls. "
+            "When False, max_retries is forced to 0 (one API attempt per node call). "
+            "Enable when quotas are stable and transient errors should be retried."
+        ),
+    )
     max_iterations: int = 3
     graph_timeout_seconds: int = 60
     registry_base_url: str = "http://localhost:8000"
@@ -36,6 +44,13 @@ class AgentConfig(BaseSettings):
         default=2048,
         description="Max characters for excerpts sent to external traces (e.g. Langfuse).",
     )
+
+    @field_validator("llm_max_retries")
+    @classmethod
+    def llm_max_retries_bounds(cls, v: int) -> int:
+        if not isinstance(v, int) or v < 0:
+            raise ValueError("llm_max_retries must be >= 0")
+        return v
 
     @field_validator("max_iterations")
     @classmethod

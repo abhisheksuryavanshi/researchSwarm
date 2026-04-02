@@ -29,6 +29,27 @@ from agents.tracing import (
 )
 
 
+_WH_WORD = re.compile(
+    r"^\s*(?:what|who|where|when|why|how)\s+"
+    r"(?:is|are|was|were|do|does|did|can|could|should|would)\s+",
+    re.I,
+)
+_LEADING_THE = re.compile(r"^the\s+", re.I)
+
+
+def _simplify_for_wikipedia_search(text: str) -> str:
+    """Turn common English questions into a shorter search phrase for on-wiki search."""
+    original = (text or "").strip()
+    if not original:
+        return original
+    s = _WH_WORD.sub("", original)
+    s = _LEADING_THE.sub("", s)
+    s = s.rstrip("?").strip()
+    if len(s) < 2:
+        return original
+    return s
+
+
 def fallback_for_type(
     type_name: Optional[str], query: str, constraints: dict[str, Any]
 ) -> Any:
@@ -75,6 +96,9 @@ def build_tool_payload(
         key_l = key.lower()
         prop_d = prop if isinstance(prop, dict) else {}
 
+        if key_l in {"gsrsearch", "srsearch"}:
+            payload[key] = _simplify_for_wikipedia_search(query)
+            continue
         if key_l in {
             "query",
             "q",
@@ -223,6 +247,12 @@ def _ordered_candidates(
     selection: Optional[ToolSelectionResponse],
     max_attempts: int,
 ) -> list[str]:
+    """Order tools to invoke: only LLM-selected ids (deduped), capped at max_attempts.
+
+    If the LLM selection is missing or empty (e.g. parse failure), fall back to a single
+    lowest-latency tool from search results. We do **not** pad with extra tools the model
+    did not choose—later graph iterations can select more or different tools via refinement.
+    """
     by_latency = sorted(
         results,
         key=lambda r: float(r.get("avg_latency_ms") or 1e9),
@@ -235,12 +265,6 @@ def _ordered_candidates(
                 ordered.append(tid)
     if not ordered and by_latency:
         ordered = [str(by_latency[0]["tool_id"])]
-    for r in by_latency:
-        tid = str(r.get("tool_id") or "")
-        if tid and tid not in ordered:
-            ordered.append(tid)
-        if len(ordered) >= max_attempts:
-            break
     return ordered[:max_attempts]
 
 
@@ -252,11 +276,45 @@ def _wrap_tool_data(raw: dict[str, Any], tool_id: str, success: bool) -> dict[st
     }
 
 
+def _wikipedia_rest_desktop_url(data: dict[str, Any]) -> str:
+    cu = data.get("content_urls")
+    if isinstance(cu, dict):
+        desk = cu.get("desktop")
+        if isinstance(desk, dict):
+            page = desk.get("page")
+            if isinstance(page, str) and page:
+                return page
+    return ""
+
+
+def _mediawiki_api_page_url_title(data: dict[str, Any]) -> tuple[str, str]:
+    """First page from action=query JSON (e.g. generator=search + prop=extracts|info)."""
+    q = data.get("query")
+    if not isinstance(q, dict):
+        return "", ""
+    pages = q.get("pages")
+    if not isinstance(pages, dict) or not pages:
+        return "", ""
+    row = next(iter(pages.values()), None)
+    if not isinstance(row, dict):
+        return "", ""
+    url = str(row.get("fullurl") or row.get("canonicalurl") or "")
+    title = str(row.get("title") or "")
+    return url, title
+
+
 def _source_from_data(
     data: dict[str, Any], tool_id: str, bind_name: Optional[str]
 ) -> dict[str, str]:
-    url = str(data.get("url") or data.get("link") or f"https://tool/{tool_id}")
-    title = str(data.get("title") or bind_name or tool_id)
+    mw_url, mw_title = _mediawiki_api_page_url_title(data)
+    url = str(
+        data.get("url")
+        or data.get("link")
+        or _wikipedia_rest_desktop_url(data)
+        or mw_url
+        or f"https://tool/{tool_id}"
+    )
+    title = str(data.get("title") or mw_title or bind_name or tool_id)
     return {"url": url, "title": title, "tool_id": tool_id}
 
 
@@ -330,11 +388,20 @@ class ToolDiscoveryTool(BaseTool):
 
         summary = _search_summary(results)
         constraints_s = json.dumps(inp.constraints, default=str)
-        user_content = researcher_prompts.USER_PROMPT.format(
-            query=inp.query,
-            constraints=constraints_s,
-            search_summary=summary,
-        )
+        if inp.gaps:
+            user_content = researcher_prompts.REFINEMENT_PROMPT.format(
+                iteration_count=max(1, inp.iteration_count),
+                gaps="\n".join(f"- {g}" for g in inp.gaps),
+                query=inp.query,
+                constraints=constraints_s,
+                search_summary=summary,
+            )
+        else:
+            user_content = researcher_prompts.USER_PROMPT.format(
+                query=inp.query,
+                constraints=constraints_s,
+                search_summary=summary,
+            )
         cb_cfg: dict[str, Any] = {}
         if self._extra_callbacks:
             cb_cfg["callbacks"] = self._extra_callbacks

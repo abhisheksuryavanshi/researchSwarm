@@ -16,6 +16,11 @@ class ToolDiscoveryInput(BaseModel):
     query: str
     constraints: dict = Field(default_factory=dict)
     gaps: list[str] = Field(default_factory=list)
+    iteration_count: int = Field(
+        default=0,
+        ge=0,
+        description="Research iteration index before this pass; used in refinement prompts.",
+    )
     agent_id: str = ""
     session_id: str = ""
     trace_id: str = ""
@@ -51,8 +56,20 @@ class ToolDiscoveryResult(BaseModel):
 
 
 class ToolSelectionResponse(BaseModel):
-    selected_tool_ids: list[str] = Field(..., min_length=1, max_length=3)
-    reasoning: str = Field(..., min_length=1)
+    selected_tool_ids: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=3,
+        description=(
+            "Minimum tools needed for this pass, in try order (first attempted first). "
+            "Prefer a single tool when it suffices."
+        ),
+    )
+    reasoning: str = Field(
+        ...,
+        min_length=1,
+        description="Brief justification for this set and order (why each tool, or why only one).",
+    )
 
     @field_validator("selected_tool_ids")
     @classmethod

@@ -175,3 +175,59 @@ async def test_log_usage_receives_canonical_session_not_only_client_hint(agent_c
     kw = reg.log_usage.await_args.kwargs
     assert kw.get("session_id") == canonical
     assert kw.get("session_id") != "browser-tab-xyz"
+
+
+@pytest.mark.asyncio
+async def test_single_llm_selection_no_latency_padding(agent_config):
+    """Only explicitly selected tools are tried; search extras are not auto-appended."""
+    reg = MagicMock(spec=RegistryClient)
+    reg.search = AsyncMock(
+        return_value={
+            "results": [
+                {
+                    "tool_id": "t1",
+                    "name": "a",
+                    "description": "d",
+                    "capabilities": ["c"],
+                    "avg_latency_ms": 99.0,
+                },
+                {
+                    "tool_id": "t2",
+                    "name": "b",
+                    "description": "d",
+                    "capabilities": ["c"],
+                    "avg_latency_ms": 1.0,
+                },
+            ],
+        }
+    )
+    reg.bind = AsyncMock(
+        return_value={
+            "endpoint": "https://ex.test/x",
+            "method": "POST",
+            "name": "x",
+            "description": "d",
+            "args_schema": {},
+            "version": "1",
+            "return_schema": {},
+        }
+    )
+    reg.invoke = AsyncMock(side_effect=Exception("fail"))
+    reg.log_usage = AsyncMock(return_value=None)
+
+    llm = FakeStructuredLLM(
+        [ToolSelectionResponse(selected_tool_ids=["t1"], reasoning="only one needed")],
+    )
+    tool = ToolDiscoveryTool(registry=reg, llm=llm, config=agent_config)
+    raw = await tool.ainvoke(
+        {
+            "capability": "c",
+            "query": "q",
+            "constraints": {},
+            "gaps": [],
+            "agent_id": "a",
+            "session_id": "s",
+        }
+    )
+    assert "false" in raw.lower() or '"success": false' in raw.lower()
+    assert reg.invoke.await_count == 1

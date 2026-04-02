@@ -34,11 +34,12 @@ _busy = False
 
 
 def create_default_llm(config: AgentConfig) -> ChatGoogleGenerativeAI:
+    effective_retries = config.llm_max_retries if config.llm_retries_enabled else 0
     kwargs: dict = {
         "model": config.llm_model,
         "temperature": config.llm_temperature,
         "timeout": config.llm_timeout_seconds,
-        "max_retries": config.llm_max_retries,
+        "max_retries": effective_retries,
     }
     if config.google_api_key:
         kwargs["google_api_key"] = config.google_api_key
