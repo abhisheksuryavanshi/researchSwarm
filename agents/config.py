@@ -14,7 +14,7 @@ class AgentConfig(BaseSettings):
     )
 
     llm_provider: str = "google"
-    llm_model: str = "gemini-2.0-flash"
+    llm_model: str = "gemini-2.5-flash-lite"
     llm_temperature: float = 0.1
     llm_timeout_seconds: int = 30
     llm_max_retries: int = 3

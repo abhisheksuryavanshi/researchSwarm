@@ -270,7 +270,7 @@ async def main():
     """
     from registry.middleware.logging import configure_logging
 
-    configure_logging(settings.log_level)
+    configure_logging(settings.log_level, settings.log_directory)
     log = structlog.get_logger()
 
     await log.ainfo("seed_started")

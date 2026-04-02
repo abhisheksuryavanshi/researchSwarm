@@ -186,7 +186,7 @@ verify all fields are loaded correctly. Test defaults when no env vars set.
    **When** AgentConfig is loaded, **Then** the LLM is initialized with
    those values.
 2. **Given** no environment variables set, **When** AgentConfig is loaded,
-   **Then** all fields use documented defaults (model=gemini-2.0-flash,
+   **Then** all fields use documented defaults (model=gemini-3.1-flash-live-preview,
    temperature=0.1, timeout=30s, max_iterations=3).
 3. **Given** `MAX_ITERATIONS=6` (exceeds bound), **When** AgentConfig is
    loaded, **Then** a validation error is raised.
@@ -302,7 +302,7 @@ verify all fields are loaded correctly. Test defaults when no env vars set.
 
 - The Tool Registry Service (feature 001) is implemented and running at
   `REGISTRY_BASE_URL` (default `http://localhost:8000`).
-- LLM provider is Google GenAI (Gemini 2.0 Flash) by default. Free tier
+- LLM provider is Google GenAI (`gemini-3.1-flash-live-preview`) by default. Quota / tier
   sufficient for development and testing.
 - Agent layer runs in-process (no separate container in v1). Deployed
   alongside the registry on the same EC2 instance.

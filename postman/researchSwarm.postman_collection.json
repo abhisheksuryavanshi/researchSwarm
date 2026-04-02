@@ -1,0 +1,241 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-research-swarm-api",
+    "name": "researchSwarm — Tool Registry + Sessions",
+    "description": "All HTTP APIs exposed by `uvicorn registry.app:app`.\n\n**Tool registry** routes do not require auth.\n\n**Sessions** require `Authorization: Bearer <value>` where the bearer string is the owner principal id (local stub auth).\n\nSet collection variables `baseUrl` and `ownerPrincipalId`. After **Create session**, `sessionId` is saved automatically for **Post turn**.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "ownerPrincipalId",
+      "value": "dev-user-1"
+    },
+    {
+      "key": "sessionId",
+      "value": ""
+    },
+    {
+      "key": "toolId",
+      "value": "calculator-v1"
+    },
+    {
+      "key": "capability",
+      "value": "web_search"
+    }
+  ],
+  "item": [
+    {
+      "name": "Tool registry",
+      "item": [
+        {
+          "name": "Register tool",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tool_id\": \"demo-echo-v1\",\n  \"name\": \"Demo Echo\",\n  \"description\": \"Minimal example tool for Postman and local testing of the registry.\",\n  \"capabilities\": [\"demo\"],\n  \"input_schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"text\": { \"type\": \"string\" }\n    },\n    \"required\": [\"text\"]\n  },\n  \"output_schema\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"echo\": { \"type\": \"string\" }\n    }\n  },\n  \"endpoint\": \"http://127.0.0.1:9999/echo\",\n  \"version\": \"1.0.0\",\n  \"method\": \"POST\",\n  \"health_check\": \"/health\",\n  \"cost_per_call\": 0.0\n}\n"
+            },
+            "url": "{{baseUrl}}/tools/register",
+            "description": "Creates a new tool. `tool_id` must match `^[a-z0-9][a-z0-9-]*[a-z0-9]$`."
+          },
+          "response": []
+        },
+        {
+          "name": "Update tool",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated description for this tool (at least ten characters).\",\n  \"cost_per_call\": 0.01\n}\n"
+            },
+            "url": "{{baseUrl}}/tools/{{toolId}}",
+            "description": "Partial update. Adjust `toolId` collection variable or path."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete tool (soft deprecate)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/tools/{{toolId}}",
+            "description": "Sets tool status to deprecated."
+          },
+          "response": []
+        },
+        {
+          "name": "Search tools",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/tools/search?capability={{capability}}&limit=10",
+            "description": "Optional `capability` query param (remove or empty for all). `limit` 1–50."
+          },
+          "response": []
+        },
+        {
+          "name": "Bind tool (agent payload)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/tools/{{toolId}}/bind",
+            "description": "Returns binding metadata for LangChain-style tool construction."
+          },
+          "response": []
+        },
+        {
+          "name": "Tool health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/tools/{{toolId}}/health",
+            "description": "Probes the tool's health URL if configured; updates stored status."
+          },
+          "response": []
+        },
+        {
+          "name": "Post usage log",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tool_id\": \"{{toolId}}\",\n  \"agent_id\": \"postman-test\",\n  \"session_id\": \"{{sessionId}}\",\n  \"latency_ms\": 12.5,\n  \"success\": true,\n  \"error_message\": null\n}\n"
+            },
+            "url": "{{baseUrl}}/tools/usage-log",
+            "description": "`tool_id` must exist. `session_id` may be empty if you have not created a session yet."
+          },
+          "response": []
+        },
+        {
+          "name": "Tool stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/tools/stats",
+            "description": "Aggregated usage per tool. Append `?tool_id=calculator-v1` or `?since=2026-01-01T00:00:00Z` as needed."
+          },
+          "response": []
+        },
+        {
+          "name": "Tool stats (filtered)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/tools/stats?tool_id={{toolId}}",
+            "description": "Same as Tool stats with `tool_id` set from collection variable."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Sessions",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{ownerPrincipalId}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Create session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    try {",
+                  "        var j = pm.response.json();",
+                  "        if (j.session_id) { pm.collectionVariables.set('sessionId', j.session_id); }",
+                  "    } catch (e) {}",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/v1/sessions",
+            "description": "201 + `session_id`. Saves `sessionId` collection variable on success."
+          },
+          "response": []
+        },
+        {
+          "name": "Post turn",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "",
+                "description": "Optional; reuse same key + same body for safe retries",
+                "disabled": true
+              },
+              {
+                "key": "X-Trace-ID",
+                "value": "",
+                "description": "Optional correlation id (server generates if omitted)",
+                "disabled": true
+              },
+              {
+                "key": "X-Session-ID",
+                "value": "",
+                "description": "Optional client session hint for logs",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"What is the capital of France?\",\n  \"client_session_id\": null\n}\n"
+            },
+            "url": "{{baseUrl}}/v1/sessions/{{sessionId}}/turns",
+            "description": "Requires `sessionId` (run Create session first). Same Bearer as create."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

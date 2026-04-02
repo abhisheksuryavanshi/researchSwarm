@@ -48,7 +48,13 @@ done
 echo "== researchSwarm teardown =="
 
 # --- Uvicorn started by setup.sh (PID file) ---
-PID_FILE="${ROOT}/.uvicorn-setup.pid"
+PID_FILE="${ROOT}/logs/uvicorn.pid"
+LEGACY_PID="${ROOT}/.uvicorn-setup.pid"
+if [[ -f "$PID_FILE" ]]; then
+  :
+elif [[ -f "$LEGACY_PID" ]]; then
+  PID_FILE="$LEGACY_PID"
+fi
 if [[ -f "$PID_FILE" ]]; then
   pid="$(cat "$PID_FILE" 2>/dev/null || true)"
   if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
@@ -57,13 +63,14 @@ if [[ -f "$PID_FILE" ]]; then
     if kill -0 "$pid" 2>/dev/null; then
       kill -KILL "$pid" 2>/dev/null || true
     fi
-    ok "Stopped Uvicorn (PID $pid from .uvicorn-setup.pid)"
+    ok "Stopped Uvicorn (PID $pid from $PID_FILE)"
   else
-    warn "Stale or empty .uvicorn-setup.pid (PID was: ${pid:-empty})"
+    warn "Stale or empty PID file (PID was: ${pid:-empty}) — $PID_FILE"
   fi
   rm -f "$PID_FILE"
+  rm -f "$LEGACY_PID"
 else
-  warn "No .uvicorn-setup.pid — if Uvicorn is running, stop it manually"
+  warn "No logs/uvicorn.pid (or legacy .uvicorn-setup.pid) — if Uvicorn is running, stop it manually"
 fi
 
 # --- Redis (standalone container from setup.sh) ---

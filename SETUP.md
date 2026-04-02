@@ -57,7 +57,7 @@ Values load from **environment variables** and/or a **`.env`** file in the repos
 |----------|---------|-----------------|--------|
 | `GOOGLE_API_KEY` | Gemini API key | Non-empty string when calling the real model | *(secret)* |
 | `LLM_PROVIDER` | Provider label | Default `google` | `google` |
-| `LLM_MODEL` | Model id | String | `gemini-2.0-flash` |
+| `LLM_MODEL` | Model id | String | `gemini-3.1-flash-live-preview` |
 | `LLM_TEMPERATURE` | Sampling | Float | `0.1` |
 | `LLM_TIMEOUT_SECONDS` | Per-call timeout | Integer ≥ 1 | `30` |
 | `LLM_MAX_RETRIES` | LLM retries | Integer ≥ 0 | `3` |
@@ -83,7 +83,7 @@ These use the prefix **`CONVERSATION_`** (via `env_prefix` in Pydantic settings)
 |----------|---------|-------------|-------------------|
 | `CONVERSATION_REDIS_URL` | Redis for locks + working set | Redis URL | `redis://localhost:6379/0` |
 | `CONVERSATION_DATABASE_URL` | MySQL for session tables | Same DSN style as `DATABASE_URL` | `mysql+aiomysql://root:root@localhost:3306/researchswarm` |
-| `CONVERSATION_LLM_MODEL` | Intent classifier model | String | `gemini-2.0-flash` |
+| `CONVERSATION_LLM_MODEL` | Intent classifier model | String | `gemini-3.1-flash-live-preview` |
 | `CONVERSATION_INTENT_CONFIDENCE_THRESHOLD` | Below → clarification path | 0.0–1.0 | `0.55` |
 | `CONVERSATION_TURN_LOCK_TTL_SECONDS` | Redis lock TTL | 5–3600 | `120` |
 | `CONVERSATION_REDIS_WORKING_SET_TTL_SECONDS` | Cached session doc TTL | 60–2592000 (30d cap) | `86400` |

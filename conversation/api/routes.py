@@ -27,7 +27,8 @@ def _principal(
     if creds is None or not creds.credentials.strip():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization required",
+            detail="Bearer token required (use Authorization: Bearer <principal_id> for local dev)",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     return creds.credentials.strip()
 

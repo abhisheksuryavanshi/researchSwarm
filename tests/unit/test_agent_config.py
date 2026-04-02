@@ -6,7 +6,7 @@ from agents.config import AgentConfig
 
 def test_agent_config_defaults():
     c = AgentConfig.model_validate({})
-    assert c.llm_model == "gemini-2.0-flash"
+    assert c.llm_model == "gemini-2.5-flash-lite"
     assert c.llm_temperature == 0.1
     assert c.llm_timeout_seconds == 30
     assert c.llm_max_retries == 3

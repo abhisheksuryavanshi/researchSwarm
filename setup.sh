@@ -111,8 +111,10 @@ if command -v curl >/dev/null 2>&1; then
   if curl -sf -o /dev/null "http://127.0.0.1:8000/openapi.json" 2>/dev/null; then
     ok "API already responding at http://127.0.0.1:8000 — not starting another Uvicorn"
   else
-    LOG_FILE="${ROOT}/.uvicorn-setup.log"
-    PID_FILE="${ROOT}/.uvicorn-setup.pid"
+    LOG_DIR="${ROOT}/logs"
+    mkdir -p "$LOG_DIR"
+    LOG_FILE="${LOG_DIR}/uvicorn.log"
+    PID_FILE="${LOG_DIR}/uvicorn.pid"
     if [[ "${RUN[0]}" == "uv" ]]; then
       nohup uv run uvicorn registry.app:app --host 0.0.0.0 --port 8000 --reload >>"$LOG_FILE" 2>&1 &
     else

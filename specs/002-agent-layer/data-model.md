@@ -135,7 +135,7 @@ Runtime configuration, not persisted. Loaded from environment variables via `pyd
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `llm_provider` | `str` | `"google"` | LLM provider key |
-| `llm_model` | `str` | `"gemini-2.0-flash"` | Model identifier |
+| `llm_model` | `str` | `"gemini-3.1-flash-live-preview"` | Model identifier |
 | `llm_temperature` | `float` | `0.1` | Sampling temperature for research tasks |
 | `llm_timeout_seconds` | `int` | `30` | Per-call timeout |
 | `llm_max_retries` | `int` | `3` | Retry count with exponential backoff |

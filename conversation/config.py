@@ -35,7 +35,7 @@ class ConversationSettings(BaseSettings):
     database_url: str = Field(
         default="mysql+aiomysql://root:root@localhost:3306/researchswarm",
     )
-    llm_model: str = Field(default="gemini-2.0-flash")
+    llm_model: str = Field(default="gemini-2.5-flash-lite")
     intent_confidence_threshold: float = Field(default=0.55, ge=0.0, le=1.0)
     turn_lock_ttl_seconds: int = Field(default=120, ge=5, le=3600)
     redis_working_set_ttl_seconds: int = Field(default=86400, ge=60, le=86400 * 30)

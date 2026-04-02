@@ -15,7 +15,7 @@ async def lifespan(app: FastAPI):
     Manage the startup and shutdown lifecycle events for the FastAPI application.
     Initializes logging and HTTP client on startup, and gracefully closes them on shutdown.
     """
-    configure_logging(settings.log_level)
+    configure_logging(settings.log_level, settings.log_directory)
     logger = structlog.get_logger()
 
     app.state.http_client = httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=2.0))
