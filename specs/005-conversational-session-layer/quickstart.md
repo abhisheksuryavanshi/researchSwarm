@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.9+
 - Docker (or podman) for **Redis** if not already local; **MySQL** (often same instance as the registry)
 - Existing `researchSwarm` env: `uv sync` from repo root
 
@@ -21,7 +21,7 @@ export CONVERSATION_REDIS_URL="redis://localhost:6379/0"
 # Align with registry MySQL (same URL pattern as REGISTRY_DATABASE_URL / settings.database_url):
 export CONVERSATION_DATABASE_URL="mysql+aiomysql://root:root@localhost:3306/researchswarm"
 # Optional until HTTP lands:
-export CONVERSATION_LLM_MODEL="gemini-2.0-flash"  # align with agents config
+export CONVERSATION_LLM_MODEL="gemini-3.1-flash-live-preview"  # align with agents config
 ```
 
 Add to your process manager or `.env` (do not commit secrets).

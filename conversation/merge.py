@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage
 
 
 def merge_constraint_dicts(
     base: dict[str, Any],
-    patch: dict[str, Any] | None,
+    patch: Optional[dict[str, Any]],
     *,
-    family_key: str | None = None,
+    family_key: Optional[str] = None,
 ) -> dict[str, Any]:
     """
     Last-wins per top-level key (FR-010 baseline). Optional ``family_key`` reserved
@@ -48,13 +48,13 @@ def serialize_messages_for_snapshot(messages: list[Any]) -> list[dict[str, Any]]
 
 
 def build_engine_input(
-    snapshot: dict[str, Any] | None,
+    snapshot: Optional[dict[str, Any]],
     user_message: str,
     trace_id: str,
     session_id: str,
     *,
-    client_session_id: str | None = None,
-    constraints_patch: dict[str, Any] | None = None,
+    client_session_id: Optional[str] = None,
+    constraints_patch: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Merge durable snapshot + new user text into a dict compatible with ``ResearchState``."""
     snap = snapshot or {}

@@ -11,7 +11,7 @@ Session tables live in the **same MySQL deployment as the tool registry** (same 
 | Column | Type | Notes |
 |--------|------|--------|
 | `id` | `CHAR(36)` or `BINARY(16)`, PK | Server-generated session id (same value as canonical `session_id` in traces) |
-| `owner_principal_id` | `VARCHAR(512)` or `TEXT` | Owning user/service identity from platform auth |
+| `owner_principal_id` | `VARCHAR(767)` | Owning identity from auth (bounded for MySQL: `TEXT` cannot be indexed without a prefix length) |
 | `tenant_id` | `VARCHAR(255)`, nullable | Optional multi-tenant scope |
 | `status` | `ENUM` or `VARCHAR(32)` | `active`, `closed`, `expired` |
 | `created_at` | `DATETIME(6)` | UTC |

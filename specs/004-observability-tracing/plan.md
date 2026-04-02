@@ -10,7 +10,7 @@ Harden and complete observability across the **research run path** to match spec
 
 ## Technical Context
 
-**Language/Version**: Python 3.11+  
+**Language/Version**: Python 3.9+  
 **Primary Dependencies**: LangGraph >=1.1, langchain-core >=0.3, langchain-google-genai >=2.0, httpx, **langfuse >=2.0** (CallbackHandler + optional Langfuse client for custom spans), **structlog >=24**  
 **Storage**: No new storage. Registry MySQL for usage logs (existing). Langfuse (self-hosted or cloud) for trace export.  
 **Testing**: pytest, pytest-asyncio; `structlog.testing.capture_logs`; integration tests against graph with Langfuse disabled or mocked.  

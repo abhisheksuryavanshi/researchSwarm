@@ -76,7 +76,7 @@ The architecture separates the research engine (the agent graph) from the interf
 | **Session Store**  | Redis (chat history, state snapshots) + MySQL (persistent sessions)  |
 | **Testing**        | Pytest + LangSmith evaluation datasets                               |
 | **Containerization** | Docker Compose (MySQL, Redis, Langfuse)                             |
-| **Language**       | Python 3.11+                                                         |
+| **Language**       | Python 3.9+ (tested with 3.9.6)                                      |
 
 ## Core Components
 
@@ -121,7 +121,7 @@ The `agents/` package runs the research **StateGraph**: Researcher → Analyst �
 
 **Quickstart:** [specs/002-agent-layer/quickstart.md](specs/002-agent-layer/quickstart.md) — configure `GOOGLE_API_KEY`, `REGISTRY_BASE_URL`, and optional Langfuse vars in `.env`.
 
-**Entry points:** `build_research_graph()`, `invoke_research_graph()` (wraps `ainvoke` with `asyncio.timeout` from `AgentConfig.graph_timeout_seconds` and a single-flight guard raising `GraphBusyError` if a run is already active), and `default_graph_context()` to build a Gemini client plus `RegistryClient`.
+**Entry points:** `build_research_graph()`, `invoke_research_graph()` (wraps `ainvoke` with `asyncio.wait_for(..., timeout=...)` from `AgentConfig.graph_timeout_seconds` and a single-flight guard raising `GraphBusyError` if a run is already active), and `default_graph_context()` to build a Gemini client plus `RegistryClient`.
 
 **Graph sketch:** `build_research_graph().get_graph().draw_ascii()` (requires `pip install grandalf`).
 

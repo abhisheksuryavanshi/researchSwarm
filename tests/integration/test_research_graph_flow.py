@@ -132,7 +132,8 @@ async def test_graph_timeout(mock_registry_client):
     ctx: GraphContext = {"llm": llm, "registry": mock_registry_client, "agent_config": cfg}
     graph = build_research_graph()
     tid = str(uuid.uuid4())
-    with pytest.raises(TimeoutError):
+    # asyncio.wait_for raises asyncio.TimeoutError on 3.9; builtin TimeoutError from 3.10+.
+    with pytest.raises(asyncio.TimeoutError):
         await invoke_research_graph(
             graph,
             {"query": "What?", "trace_id": tid, "session_id": "to"},

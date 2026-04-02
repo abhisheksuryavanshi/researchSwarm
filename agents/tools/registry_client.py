@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+import re
+from typing import Any, Optional
+from urllib.parse import quote
 
 import httpx
 import structlog
@@ -9,13 +11,30 @@ from agents.config import AgentConfig
 
 _LOG = structlog.get_logger()
 
+_ENDPOINT_PLACEHOLDER = re.compile(r"\{(\w+)\}")
+
+
+def _placeholder_keys(endpoint: str) -> set[str]:
+    return set(_ENDPOINT_PLACEHOLDER.findall(endpoint))
+
+
+def _expand_endpoint_template(endpoint: str, payload: dict[str, Any]) -> str:
+    """Fill ``{param}`` segments with URL-encoded values from *payload*."""
+
+    def repl(match: re.Match[str]) -> str:
+        key = match.group(1)
+        raw = payload.get(key, "")
+        return quote(str(raw), safe="")
+
+    return _ENDPOINT_PLACEHOLDER.sub(repl, endpoint)
+
 
 class RegistryClient:
     def __init__(
         self,
         config: AgentConfig,
-        client: httpx.AsyncClient | None = None,
-        tool_client: httpx.AsyncClient | None = None,
+        client: Optional[httpx.AsyncClient] = None,
+        tool_client: Optional[httpx.AsyncClient] = None,
     ) -> None:
         self._config = config
         self._own_registry = client is None
@@ -27,7 +46,15 @@ class RegistryClient:
             self._tool_client = tool_client
             self._own_tool = False
         else:
-            self._tool_client = httpx.AsyncClient(timeout=timeout)
+            self._tool_client = httpx.AsyncClient(
+                timeout=timeout,
+                headers={
+                    "User-Agent": (
+                        "researchSwarm/0.1 (registry tool invoker; "
+                        "+https://www.mediawiki.org/wiki/API:Etiquette)"
+                    ),
+                },
+            )
             self._own_tool = True
 
     async def aclose(self) -> None:
@@ -38,9 +65,9 @@ class RegistryClient:
 
     async def search(
         self,
-        capability: str | None = None,
+        capability: Optional[str] = None,
         limit: int = 10,
-        constraints: dict[str, Any] | None = None,
+        constraints: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         params: dict[str, Any] = {"limit": limit}
         if capability:
@@ -58,13 +85,21 @@ class RegistryClient:
         return r.json()
 
     async def invoke(
-        self, endpoint: str, method: str, payload: dict[str, Any] | None = None
+        self, endpoint: str, method: str, payload: Optional[dict[str, Any]] = None
     ) -> dict[str, Any]:
+        payload = dict(payload or {})
+        path_keys = _placeholder_keys(endpoint)
+        url = _expand_endpoint_template(endpoint, payload) if path_keys else endpoint
+        consumed = path_keys
         m = method.upper()
         if m == "POST":
-            r = await self._tool_client.post(endpoint, json=payload or {})
+            body = {k: v for k, v in payload.items() if k not in consumed}
+            r = await self._tool_client.post(url, json=body)
         elif m == "GET":
-            r = await self._tool_client.get(endpoint, params=payload or {})
+            if consumed:
+                r = await self._tool_client.get(url)
+            else:
+                r = await self._tool_client.get(url, params=payload)
         else:
             raise ValueError(f"unsupported HTTP method: {method}")
         r.raise_for_status()
@@ -75,11 +110,11 @@ class RegistryClient:
     async def log_usage(
         self,
         tool_id: str,
-        agent_id: str | None,
-        session_id: str | None,
+        agent_id: Optional[str],
+        session_id: Optional[str],
         latency_ms: float,
         success: bool,
-        error_message: str | None = None,
+        error_message: Optional[str] = None,
     ) -> None:
         """POST usage to the registry (best-effort).
 

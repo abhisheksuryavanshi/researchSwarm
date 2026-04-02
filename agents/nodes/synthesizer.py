@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.runtime import Runtime
@@ -61,7 +61,7 @@ async def synthesizer_node(state: ResearchState, runtime: Runtime[GraphContext])
         }
 
     raw_msg = None
-    parsed: SynthesisResponse | None = None
+    parsed: Optional[SynthesisResponse] = None
     if isinstance(out, dict):
         parsed = out.get("parsed")
         raw_msg = out.get("raw")

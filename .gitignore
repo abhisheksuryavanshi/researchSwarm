@@ -34,3 +34,6 @@ htmlcov/
 
 # Docker
 mysqldata/
+
+# Runtime logs (all backend file sinks; created by app / setup.sh)
+logs/

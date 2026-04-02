@@ -4,7 +4,7 @@ import contextvars
 import json
 import os
 from copy import deepcopy
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Optional
 
 import structlog
 from langchain_core.callbacks import BaseCallbackHandler
@@ -49,7 +49,7 @@ def is_langfuse_run_enabled() -> bool:
     return _langfuse_enabled_ctx.get()
 
 
-def truncate_for_trace(text: str | None, max_chars: int) -> str:
+def truncate_for_trace(text: Optional[str], max_chars: int) -> str:
     if text is None:
         return ""
     if _TRACE_REDACT_HOOK is not None:
@@ -65,8 +65,8 @@ def get_tracer(
     agent_config: Any,
     *,
     trace_id: str,
-    max_chars: int | None = None,
-) -> BaseCallbackHandler | None:
+    max_chars: Optional[int] = None,
+) -> Optional[BaseCallbackHandler]:
     if not getattr(agent_config, "langfuse_enabled", False):
         return None
     lim = max_chars
@@ -130,7 +130,7 @@ def langfuse_run_metadata_dict(
     *,
     session_id: str,
     trace_id: str,
-    client_session_id: str | None = None,
+    client_session_id: Optional[str] = None,
 ) -> dict[str, Any]:
     meta: dict[str, Any] = {
         "langfuse_session_id": session_id,
@@ -144,7 +144,7 @@ def langfuse_run_metadata_dict(
 def llm_invoke_config(
     state: ResearchState,
     callbacks: list[Any],
-) -> dict[str, Any] | None:
+) -> Optional[dict[str, Any]]:
     if not callbacks:
         return None
     return {
@@ -204,7 +204,7 @@ def get_logger(
     trace_id: str,
     session_id: str,
     agent_id: str,
-    client_session_id: str | None = None,
+    client_session_id: Optional[str] = None,
 ) -> structlog.BoundLogger:
     fields: dict[str, Any] = {
         "trace_id": trace_id,

@@ -9,7 +9,7 @@ Add a multi-agent research orchestration layer built on LangGraph's `StateGraph`
 
 ## Technical Context
 
-**Language/Version**: Python 3.11+
+**Language/Version**: Python 3.9+
 **Primary Dependencies**: LangGraph >=1.1, langchain-core >=0.3, langchain-google-genai >=2.0 (Gemini 2.0 Flash default), httpx (registry client), langfuse >=2.0 (LLM tracing)
 **Storage**: MySQL via existing registry DB (tool lookups); in-memory state for graph execution; future Redis for session persistence (not in this phase)
 **Testing**: pytest, pytest-asyncio (existing setup)

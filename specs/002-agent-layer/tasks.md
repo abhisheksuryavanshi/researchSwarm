@@ -48,7 +48,7 @@
 > **NOTE: Write these tests FIRST, ensure they FAIL before implementation**
 
 - [X] T005 [P] [US4] Contract test for ResearchState schema in `tests/contract/test_state_schema_contract.py` — validate required input fields (query, trace_id, session_id), optional fields with defaults, reducer behavior for _dedupe_sources (dedup by URL), _merge_token_usage (sum per-agent keys), operator.add (raw_findings, errors, accumulated_context), max_iterations bounds [1,5], empty query rejection
-- [X] T006 [P] [US6] Unit test for AgentConfig in `tests/unit/test_agent_config.py` — validate all defaults (model=gemini-2.0-flash, temperature=0.1, timeout=30, max_retries=3, max_iterations=3, graph_timeout=60), env var override, MAX_ITERATIONS=6 raises ValidationError, GRAPH_TIMEOUT_SECONDS loading
+- [X] T006 [P] [US6] Unit test for AgentConfig in `tests/unit/test_agent_config.py` — validate all defaults (model=gemini-3.1-flash-live-preview, temperature=0.1, timeout=30, max_retries=3, max_iterations=3, graph_timeout=60), env var override, MAX_ITERATIONS=6 raises ValidationError, GRAPH_TIMEOUT_SECONDS loading
 - [X] T007 [P] Unit test for custom reducers in `tests/unit/test_reducers.py` — _dedupe_sources with overlapping URLs returns unique set, _merge_token_usage sums same keys and preserves disjoint keys, empty inputs return empty
 - [X] T008 [P] Unit test for response models in `tests/unit/test_response_models.py` — validate ToolSelectionResponse (1-3 tool_ids, reasoning non-empty), CritiqueResponse (critique non-empty, gaps list), AnalysisResponse, SynthesisResponse
 - [X] T009 [P] Unit test for RegistryClient in `tests/unit/test_registry_client.py` — mock httpx calls for search(capability), bind(tool_id), invoke(endpoint, method, payload), log_usage(); verify error handling on connection failure
@@ -133,7 +133,7 @@
 
 - [X] T032 [P] [US1] Create synthesizer prompt templates in `agents/prompts/synthesizer.py` — SYSTEM_PROMPT (role: synthesize, cite sources, note limitations), USER_PROMPT (query + analysis + raw_findings + sources + critique + critique_pass + constraints + accumulated_context)
 - [X] T033 [US1] Implement synthesizer_node function in `agents/nodes/synthesizer.py` — call LLM with with_structured_output(SynthesisResponse), produce final markdown with citations, note limitations when critique_pass=False (FR-009), track token_usage, independent LLM calls (FR-008b)
-- [X] T034 [US1] Implement build_research_graph function in `agents/graph.py` — create StateGraph(ResearchState), add_node for all 4 agents, add_edge START→researcher, researcher→analyst, analyst→critic, add_conditional_edges critic→route_after_critic, add_edge synthesizer→END, enforce graph_timeout_seconds via asyncio.timeout, single-flight guard (`GraphBusyError` if busy), compile and return
+- [X] T034 [US1] Implement build_research_graph function in `agents/graph.py` — create StateGraph(ResearchState), add_node for all 4 agents, add_edge START→researcher, researcher→analyst, analyst→critic, add_conditional_edges critic→route_after_critic, add_edge synthesizer→END, enforce graph_timeout_seconds via asyncio.wait_for, single-flight guard (`GraphBusyError` if busy), compile and return
 - [X] T035 [US1] Add graph entry point in `agents/__init__.py` — export build_research_graph, ResearchState, AgentConfig for external consumers
 
 **Checkpoint**: Complete pipeline functional — full graph executes with all four agents, Critic loop-back, graph timeout, and single-execution guard. US1 acceptance scenarios testable.

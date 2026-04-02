@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.runtime import Runtime
@@ -75,7 +75,7 @@ async def critic_node(state: ResearchState, runtime: Runtime[GraphContext]) -> d
         }
 
     raw_msg = None
-    parsed: CritiqueResponse | None = None
+    parsed: Optional[CritiqueResponse] = None
     if isinstance(out, dict):
         parsed = out.get("parsed")
         raw_msg = out.get("raw")

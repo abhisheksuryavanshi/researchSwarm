@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from fastapi.responses import JSONResponse
@@ -22,12 +22,13 @@ _bearer = HTTPBearer(auto_error=False)
 
 
 def _principal(
-    creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+    creds: Annotated[Optional[HTTPAuthorizationCredentials], Depends(_bearer)],
 ) -> str:
     if creds is None or not creds.credentials.strip():
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization required",
+            detail="Bearer token required (use Authorization: Bearer <principal_id> for local dev)",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     return creds.credentials.strip()
 
@@ -62,7 +63,7 @@ async def post_turn(
     body: TurnRequest,
     owner: Annotated[str, Depends(_principal)],
     coord: Annotated[ConversationCoordinator, Depends(_coordinator)],
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    idempotency_key: Annotated[Optional[str], Header(alias="Idempotency-Key")] = None,
 ):
     import uuid
 

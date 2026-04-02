@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)
 class RoutePlan:
     mode: str
     engine_entry: str
-    state_patch: dict | None = None
+    state_patch: Optional[dict] = None
 
 
 def plan_route(

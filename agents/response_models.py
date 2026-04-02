@@ -1,4 +1,5 @@
 import re
+from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -7,7 +8,7 @@ class InvocationAttempt(BaseModel):
     tool_id: str
     success: bool
     latency_ms: float
-    error_message: str | None = None
+    error_message: Optional[str] = None
 
 
 class ToolDiscoveryInput(BaseModel):
@@ -15,10 +16,15 @@ class ToolDiscoveryInput(BaseModel):
     query: str
     constraints: dict = Field(default_factory=dict)
     gaps: list[str] = Field(default_factory=list)
+    iteration_count: int = Field(
+        default=0,
+        ge=0,
+        description="Research iteration index before this pass; used in refinement prompts.",
+    )
     agent_id: str = ""
     session_id: str = ""
     trace_id: str = ""
-    client_session_id: str | None = None
+    client_session_id: Optional[str] = None
 
     @field_validator("capability")
     @classmethod
@@ -42,16 +48,28 @@ class ToolDiscoveryInput(BaseModel):
 
 class ToolDiscoveryResult(BaseModel):
     success: bool
-    tool_id: str | None = None
+    tool_id: Optional[str] = None
     data: dict = Field(default_factory=dict)
     source: dict = Field(default_factory=dict)
     attempts: list[InvocationAttempt] = Field(default_factory=list)
-    error: str | None = None
+    error: Optional[str] = None
 
 
 class ToolSelectionResponse(BaseModel):
-    selected_tool_ids: list[str] = Field(..., min_length=1, max_length=3)
-    reasoning: str = Field(..., min_length=1)
+    selected_tool_ids: list[str] = Field(
+        ...,
+        min_length=1,
+        max_length=3,
+        description=(
+            "Minimum tools needed for this pass, in try order (first attempted first). "
+            "Prefer a single tool when it suffices."
+        ),
+    )
+    reasoning: str = Field(
+        ...,
+        min_length=1,
+        description="Brief justification for this set and order (why each tool, or why only one).",
+    )
 
     @field_validator("selected_tool_ids")
     @classmethod

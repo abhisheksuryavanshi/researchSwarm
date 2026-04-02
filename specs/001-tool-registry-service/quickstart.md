@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.9+
 - Docker & Docker Compose (for local MySQL)
 
 ## Setup (Local Development)
@@ -168,7 +168,7 @@ FastAPI auto-generates interactive docs:
 ### EC2 Deployment
 
 1. Launch an EC2 `t3.micro` or `t3.small` instance (Amazon Linux 2023).
-2. Install Python 3.11+, clone the repo, install dependencies.
+2. Install Python 3.9+, clone the repo, install dependencies.
 3. Set environment variables (RDS URL).
 4. Run with: `uvicorn registry.app:app --host 0.0.0.0 --port 8000`
 5. (Optional) Use systemd or supervisord for process management.

@@ -4,16 +4,64 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import Optional
 
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from registry.config import settings
-from registry.database import async_session_factory
+from registry.database import async_session_factory, engine
 from registry.models import Tool, ToolCapability
 
 logger = structlog.get_logger()
+
+# MediaWiki Action API: on-wiki search resolves natural language to an article, then returns
+# intro extract + URL (unlike REST /page/summary/{title}, which requires an exact title).
+WIKIPEDIA_LOOKUP_TOOL: dict = {
+    "tool_id": "wikipedia-lookup-v1",
+    "name": "Wikipedia Lookup",
+    "description": (
+        "Searches English Wikipedia for the user question or topic and returns the top "
+        "matching article's lead extract and page URL (works for full questions, not only titles)."
+    ),
+    "capabilities": ["general_knowledge", "encyclopedia"],
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "default": "query"},
+            "format": {"type": "string", "default": "json"},
+            "generator": {"type": "string", "default": "search"},
+            "gsrsearch": {
+                "type": "string",
+                "description": "Natural language question or keywords (filled from the research query)",
+            },
+            "gsrlimit": {"type": "integer", "default": 1},
+            "gsrnamespace": {"type": "integer", "default": 0},
+            "prop": {"type": "string", "default": "extracts|info"},
+            "inprop": {"type": "string", "default": "url"},
+            "exintro": {"type": "integer", "default": 1},
+            "explaintext": {"type": "integer", "default": 1},
+        },
+        "required": ["gsrsearch"],
+    },
+    "output_schema": {
+        "type": "object",
+        "properties": {
+            "batchcomplete": {"type": "string"},
+            "continue": {"type": "object"},
+            "query": {
+                "type": "object",
+                "properties": {
+                    "pages": {"type": "object"},
+                },
+            },
+        },
+    },
+    "endpoint": "https://en.wikipedia.org/w/api.php",
+    "version": "1.0.0",
+    "method": "GET",
+}
 
 SEED_TOOLS = [
     {
@@ -102,32 +150,7 @@ SEED_TOOLS = [
         "method": "POST",
         "health_check": "/health",
     },
-    {
-        "tool_id": "wikipedia-lookup-v1",
-        "name": "Wikipedia Lookup",
-        "description": (
-            "Looks up Wikipedia articles by topic and returns article summaries, "
-            "sections, and references for general knowledge queries."
-        ),
-        "capabilities": ["general_knowledge", "encyclopedia"],
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "topic": {"type": "string", "description": "Topic to look up"},
-            },
-            "required": ["topic"],
-        },
-        "output_schema": {
-            "type": "object",
-            "properties": {
-                "summary": {"type": "string"},
-                "url": {"type": "string"},
-            },
-        },
-        "endpoint": "http://tools:8001/wikipedia",
-        "version": "1.0.0",
-        "method": "POST",
-    },
+    WIKIPEDIA_LOOKUP_TOOL,
     {
         "tool_id": "calculator-v1",
         "name": "Calculator",
@@ -212,7 +235,23 @@ SEED_TOOLS = [
 ]
 
 
-async def seed(session: AsyncSession | None = None) -> int:
+async def _sync_wikipedia_lookup_tool(session: AsyncSession) -> None:
+    """Point existing installs at the public Wikipedia REST API (idempotent)."""
+    res = await session.execute(
+        select(Tool).where(Tool.tool_id == WIKIPEDIA_LOOKUP_TOOL["tool_id"])
+    )
+    row = res.scalar_one_or_none()
+    if row is None:
+        return
+    now = datetime.now(timezone.utc)
+    row.endpoint = WIKIPEDIA_LOOKUP_TOOL["endpoint"]
+    row.method = WIKIPEDIA_LOOKUP_TOOL["method"]
+    row.input_schema = WIKIPEDIA_LOOKUP_TOOL["input_schema"]
+    row.output_schema = WIKIPEDIA_LOOKUP_TOOL["output_schema"]
+    row.updated_at = now
+
+
+async def seed(session: Optional[AsyncSession] = None) -> int:
     """
     Idempotently populate the database with a predefined set of fundamental tools.
     Returns the number of freshly inserted tools.
@@ -252,6 +291,7 @@ async def seed(session: AsyncSession | None = None) -> int:
             session.add(tool)
             count += 1
 
+        await _sync_wikipedia_lookup_tool(session)
         await session.commit()
         return count
     except Exception:
@@ -269,12 +309,13 @@ async def main():
     """
     from registry.middleware.logging import configure_logging
 
-    configure_logging(settings.log_level)
+    configure_logging(settings.log_level, settings.log_directory)
     log = structlog.get_logger()
 
     await log.ainfo("seed_started")
     count = await seed()
     await log.ainfo("seed_completed", tools_created=count, total_seed_tools=len(SEED_TOOLS))
+    await engine.dispose()
 
 
 if __name__ == "__main__":

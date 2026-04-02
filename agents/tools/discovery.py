@@ -4,7 +4,7 @@ import asyncio
 import json
 import re
 import time
-from typing import Any, Type
+from typing import Any, Optional, Type
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -29,8 +29,29 @@ from agents.tracing import (
 )
 
 
+_WH_WORD = re.compile(
+    r"^\s*(?:what|who|where|when|why|how)\s+"
+    r"(?:is|are|was|were|do|does|did|can|could|should|would)\s+",
+    re.I,
+)
+_LEADING_THE = re.compile(r"^the\s+", re.I)
+
+
+def _simplify_for_wikipedia_search(text: str) -> str:
+    """Turn common English questions into a shorter search phrase for on-wiki search."""
+    original = (text or "").strip()
+    if not original:
+        return original
+    s = _WH_WORD.sub("", original)
+    s = _LEADING_THE.sub("", s)
+    s = s.rstrip("?").strip()
+    if len(s) < 2:
+        return original
+    return s
+
+
 def fallback_for_type(
-    type_name: str | None, query: str, constraints: dict[str, Any]
+    type_name: Optional[str], query: str, constraints: dict[str, Any]
 ) -> Any:
     if type_name == "string":
         return query
@@ -52,7 +73,7 @@ def build_tool_payload(
     query: str,
     constraints: dict[str, Any],
     gaps: list[str],
-    args_schema: dict[str, Any] | None,
+    args_schema: Optional[dict[str, Any]],
 ) -> dict[str, Any]:
     schema = args_schema if isinstance(args_schema, dict) else {}
     properties = (
@@ -75,6 +96,9 @@ def build_tool_payload(
         key_l = key.lower()
         prop_d = prop if isinstance(prop, dict) else {}
 
+        if key_l in {"gsrsearch", "srsearch"}:
+            payload[key] = _simplify_for_wikipedia_search(query)
+            continue
         if key_l in {
             "query",
             "q",
@@ -139,7 +163,7 @@ class GenericToolInput(BaseModel):
 
 
 def _args_schema_to_model(
-    tool_name: str, args_schema: dict[str, Any] | None
+    tool_name: str, args_schema: Optional[dict[str, Any]]
 ) -> Type[BaseModel]:
     if not isinstance(args_schema, dict):
         return GenericToolInput
@@ -175,8 +199,10 @@ def build_dynamic_tool(
 
     async def _invoke(**kwargs: Any) -> dict[str, Any]:
         payload = dict(kwargs)
-        async with asyncio.timeout(timeout_seconds):
-            return await registry.invoke(endpoint, method, payload)
+        return await asyncio.wait_for(
+            registry.invoke(endpoint, method, payload),
+            timeout=timeout_seconds,
+        )
 
     return StructuredTool.from_function(
         coroutine=_invoke,
@@ -218,9 +244,15 @@ def _filter_results_by_constraints(
 
 def _ordered_candidates(
     results: list[dict[str, Any]],
-    selection: ToolSelectionResponse | None,
+    selection: Optional[ToolSelectionResponse],
     max_attempts: int,
 ) -> list[str]:
+    """Order tools to invoke: only LLM-selected ids (deduped), capped at max_attempts.
+
+    If the LLM selection is missing or empty (e.g. parse failure), fall back to a single
+    lowest-latency tool from search results. We do **not** pad with extra tools the model
+    did not choose—later graph iterations can select more or different tools via refinement.
+    """
     by_latency = sorted(
         results,
         key=lambda r: float(r.get("avg_latency_ms") or 1e9),
@@ -233,12 +265,6 @@ def _ordered_candidates(
                 ordered.append(tid)
     if not ordered and by_latency:
         ordered = [str(by_latency[0]["tool_id"])]
-    for r in by_latency:
-        tid = str(r.get("tool_id") or "")
-        if tid and tid not in ordered:
-            ordered.append(tid)
-        if len(ordered) >= max_attempts:
-            break
     return ordered[:max_attempts]
 
 
@@ -250,9 +276,45 @@ def _wrap_tool_data(raw: dict[str, Any], tool_id: str, success: bool) -> dict[st
     }
 
 
-def _source_from_data(data: dict[str, Any], tool_id: str, bind_name: str | None) -> dict[str, str]:
-    url = str(data.get("url") or data.get("link") or f"https://tool/{tool_id}")
-    title = str(data.get("title") or bind_name or tool_id)
+def _wikipedia_rest_desktop_url(data: dict[str, Any]) -> str:
+    cu = data.get("content_urls")
+    if isinstance(cu, dict):
+        desk = cu.get("desktop")
+        if isinstance(desk, dict):
+            page = desk.get("page")
+            if isinstance(page, str) and page:
+                return page
+    return ""
+
+
+def _mediawiki_api_page_url_title(data: dict[str, Any]) -> tuple[str, str]:
+    """First page from action=query JSON (e.g. generator=search + prop=extracts|info)."""
+    q = data.get("query")
+    if not isinstance(q, dict):
+        return "", ""
+    pages = q.get("pages")
+    if not isinstance(pages, dict) or not pages:
+        return "", ""
+    row = next(iter(pages.values()), None)
+    if not isinstance(row, dict):
+        return "", ""
+    url = str(row.get("fullurl") or row.get("canonicalurl") or "")
+    title = str(row.get("title") or "")
+    return url, title
+
+
+def _source_from_data(
+    data: dict[str, Any], tool_id: str, bind_name: Optional[str]
+) -> dict[str, str]:
+    mw_url, mw_title = _mediawiki_api_page_url_title(data)
+    url = str(
+        data.get("url")
+        or data.get("link")
+        or _wikipedia_rest_desktop_url(data)
+        or mw_url
+        or f"https://tool/{tool_id}"
+    )
+    title = str(data.get("title") or mw_title or bind_name or tool_id)
     return {"url": url, "title": title, "tool_id": tool_id}
 
 
@@ -269,7 +331,7 @@ class ToolDiscoveryTool(BaseTool):
         llm: BaseChatModel,
         config: AgentConfig,
         *,
-        callbacks: list[Any] | None = None,
+        callbacks: Optional[list[Any]] = None,
     ) -> None:
         super().__init__()
         self._registry = registry
@@ -326,11 +388,20 @@ class ToolDiscoveryTool(BaseTool):
 
         summary = _search_summary(results)
         constraints_s = json.dumps(inp.constraints, default=str)
-        user_content = researcher_prompts.USER_PROMPT.format(
-            query=inp.query,
-            constraints=constraints_s,
-            search_summary=summary,
-        )
+        if inp.gaps:
+            user_content = researcher_prompts.REFINEMENT_PROMPT.format(
+                iteration_count=max(1, inp.iteration_count),
+                gaps="\n".join(f"- {g}" for g in inp.gaps),
+                query=inp.query,
+                constraints=constraints_s,
+                search_summary=summary,
+            )
+        else:
+            user_content = researcher_prompts.USER_PROMPT.format(
+                query=inp.query,
+                constraints=constraints_s,
+                search_summary=summary,
+            )
         cb_cfg: dict[str, Any] = {}
         if self._extra_callbacks:
             cb_cfg["callbacks"] = self._extra_callbacks
@@ -340,7 +411,7 @@ class ToolDiscoveryTool(BaseTool):
                 client_session_id=inp.client_session_id,
             )
 
-        selection: ToolSelectionResponse | None = None
+        selection: Optional[ToolSelectionResponse] = None
         try:
             runnable = self._llm.with_structured_output(
                 ToolSelectionResponse, include_raw=True
@@ -375,7 +446,7 @@ class ToolDiscoveryTool(BaseTool):
         constraints_d = inp.constraints if isinstance(inp.constraints, dict) else {}
 
         for tool_id in candidates:
-            bind_info: dict[str, Any] | None = None
+            bind_info: Optional[dict[str, Any]] = None
             try:
                 bind_info = await self._registry.bind(tool_id)
             except Exception as exc:
@@ -389,7 +460,7 @@ class ToolDiscoveryTool(BaseTool):
 
             start = time.perf_counter()
             success = False
-            err_msg: str | None = None
+            err_msg: Optional[str] = None
             raw_data: dict[str, Any] = {}
             span_obj: Any = None
             max_c = current_trace_excerpt_max()
@@ -430,8 +501,7 @@ class ToolDiscoveryTool(BaseTool):
                             )
                     except Exception:
                         span_obj = None
-                async with asyncio.timeout(timeout_s):
-                    out = await dyn.ainvoke(payload)
+                out = await asyncio.wait_for(dyn.ainvoke(payload), timeout=timeout_s)
                 raw_data = out if isinstance(out, dict) else {"result": out}
                 success = True
             except Exception as exc:

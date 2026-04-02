@@ -4,7 +4,7 @@ Verify Langfuse + structlog + registry usage for the research graph.
 
 ## Prerequisites
 
-- Python 3.11+, project deps installed (`uv sync`).
+- Python 3.9+, project deps installed (`uv sync`).
 - Optional: running **Langfuse** (see root `README.md` / docker-compose) and env vars:
   - `LANGFUSE_PUBLIC_KEY`
   - `LANGFUSE_SECRET_KEY`

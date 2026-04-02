@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Python 3.11+
+- Python 3.9+
 - Running Tool Registry Service (see registry quickstart)
 - Google GenAI API key (`GOOGLE_API_KEY` env var)
 - Optional: Langfuse instance for tracing
@@ -31,7 +31,7 @@ Add or update these variables in `.env`:
 ```env
 # LLM Provider
 GOOGLE_API_KEY=your-google-genai-api-key
-LLM_MODEL=gemini-2.0-flash
+LLM_MODEL=gemini-3.1-flash-live-preview
 LLM_TEMPERATURE=0.1
 LLM_TIMEOUT_SECONDS=30
 LLM_MAX_RETRIES=3

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Optional
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -12,20 +14,28 @@ class AgentConfig(BaseSettings):
     )
 
     llm_provider: str = "google"
-    llm_model: str = "gemini-2.0-flash"
+    llm_model: str = "gemini-2.5-flash-lite"
     llm_temperature: float = 0.1
     llm_timeout_seconds: int = 30
     llm_max_retries: int = 3
+    llm_retries_enabled: bool = Field(
+        default=False,
+        description=(
+            "Global switch for LangChain/Google client HTTP retries on failed LLM calls. "
+            "When False, max_retries is forced to 0 (one API attempt per node call). "
+            "Enable when quotas are stable and transient errors should be retried."
+        ),
+    )
     max_iterations: int = 3
     graph_timeout_seconds: int = 60
     registry_base_url: str = "http://localhost:8000"
     tool_invocation_timeout_seconds: int = 30
     max_tool_fallback_attempts: int = 3
-    google_api_key: str | None = None
+    google_api_key: Optional[str] = None
     langfuse_enabled: bool = True
     langfuse_host: str = "http://localhost:3000"
-    langfuse_public_key: str | None = None
-    langfuse_secret_key: str | None = None
+    langfuse_public_key: Optional[str] = None
+    langfuse_secret_key: Optional[str] = None
     token_usage_warn_threshold: int = Field(
         default=100_000,
         description="Summed token estimate threshold for warning logs.",
@@ -34,6 +44,13 @@ class AgentConfig(BaseSettings):
         default=2048,
         description="Max characters for excerpts sent to external traces (e.g. Langfuse).",
     )
+
+    @field_validator("llm_max_retries")
+    @classmethod
+    def llm_max_retries_bounds(cls, v: int) -> int:
+        if not isinstance(v, int) or v < 0:
+            raise ValueError("llm_max_retries must be >= 0")
+        return v
 
     @field_validator("max_iterations")
     @classmethod

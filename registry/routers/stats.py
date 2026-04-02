@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import case, func, select
@@ -13,8 +14,8 @@ router = APIRouter()
 
 @router.get("/tools/stats", response_model=ToolStatsResponse)
 async def get_stats(
-    tool_id: str | None = Query(default=None),
-    since: datetime | None = Query(default=None),
+    tool_id: Optional[str] = Query(default=None),
+    since: Optional[datetime] = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
     """

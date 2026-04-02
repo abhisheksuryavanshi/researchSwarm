@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from typing import Optional
 
 from conversation.models import SessionNotFoundErrorBody
 
@@ -9,7 +10,7 @@ from conversation.models import SessionNotFoundErrorBody
 SESSION_NOT_FOUND = SessionNotFoundErrorBody().model_dump()
 
 
-def body_fingerprint(message: str, client_session_id: str | None) -> str:
+def body_fingerprint(message: str, client_session_id: Optional[str]) -> str:
     payload = json.dumps(
         {"message": message, "client_session_id": client_session_id},
         sort_keys=True,

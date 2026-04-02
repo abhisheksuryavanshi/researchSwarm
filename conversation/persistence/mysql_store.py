@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional, Union
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -26,8 +26,8 @@ class MysqlSessionStore:
         self,
         owner_principal_id: str,
         *,
-        tenant_id: str | None = None,
-        expires_at: datetime | None = None,
+        tenant_id: Optional[str] = None,
+        expires_at: Optional[datetime] = None,
     ) -> SessionRow:
         now = datetime.now(timezone.utc)
         sid = str(uuid.uuid4())
@@ -48,7 +48,7 @@ class MysqlSessionStore:
 
     async def get_session_for_owner(
         self, session_id: str, owner_principal_id: str
-    ) -> SessionRow | None:
+    ) -> Optional[SessionRow]:
         async with self._sessions() as s:
             r = await s.get(SessionRow, session_id)
             if r is None:
@@ -57,7 +57,7 @@ class MysqlSessionStore:
                 return None
             return r
 
-    async def get_session_any_owner(self, session_id: str) -> SessionRow | None:
+    async def get_session_any_owner(self, session_id: str) -> Optional[SessionRow]:
         async with self._sessions() as s:
             return await s.get(SessionRow, session_id)
 
@@ -75,12 +75,12 @@ class MysqlSessionStore:
         session_id: str,
         turn_index: int,
         role: str,
-        content: dict[str, Any] | list[Any] | str,
+        content: Union[dict[str, Any], list[Any], str],
         *,
-        intent: str | None = None,
-        intent_confidence: float | None = None,
-        trace_id: str | None = None,
-        idempotency_key: str | None = None,
+        intent: Optional[str] = None,
+        intent_confidence: Optional[float] = None,
+        trace_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> SessionTurnRow:
         now = datetime.now(timezone.utc)
         row = SessionTurnRow(
@@ -105,7 +105,7 @@ class MysqlSessionStore:
 
     async def find_turn_by_idempotency(
         self, session_id: str, idempotency_key: str
-    ) -> SessionTurnRow | None:
+    ) -> Optional[SessionTurnRow]:
         async with self._sessions() as s:
             q = select(SessionTurnRow).where(
                 SessionTurnRow.session_id == session_id,
@@ -114,7 +114,7 @@ class MysqlSessionStore:
             res = await s.execute(q)
             return res.scalar_one_or_none()
 
-    async def get_turn(self, session_id: str, turn_index: int) -> SessionTurnRow | None:
+    async def get_turn(self, session_id: str, turn_index: int) -> Optional[SessionTurnRow]:
         async with self._sessions() as s:
             q = select(SessionTurnRow).where(
                 SessionTurnRow.session_id == session_id,
@@ -123,7 +123,7 @@ class MysqlSessionStore:
             res = await s.execute(q)
             return res.scalar_one_or_none()
 
-    async def latest_snapshot(self, session_id: str) -> ResearchSnapshotRow | None:
+    async def latest_snapshot(self, session_id: str) -> Optional[ResearchSnapshotRow]:
         async with self._sessions() as s:
             q = (
                 select(ResearchSnapshotRow)

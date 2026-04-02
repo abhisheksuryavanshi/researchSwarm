@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -23,7 +24,7 @@ class ToolCreateRequest(BaseModel):
     endpoint: str = Field(..., max_length=500)
     version: str = Field(..., max_length=50)
     method: str = Field(default="POST", max_length=10)
-    health_check: str | None = None
+    health_check: Optional[str] = None
     cost_per_call: float = 0.0
 
     @field_validator("tool_id")
@@ -78,21 +79,21 @@ class ToolUpdateRequest(BaseModel):
     Pydantic schema facilitating partial updates to existing tool records.
     All fields are intentionally optional to support differential patches.
     """
-    name: str | None = Field(default=None, min_length=1, max_length=255)
-    description: str | None = Field(default=None, min_length=10)
-    capabilities: list[str] | None = None
-    input_schema: dict | None = None
-    output_schema: dict | None = None
-    endpoint: str | None = Field(default=None, max_length=500)
-    version: str | None = Field(default=None, max_length=50)
-    method: str | None = Field(default=None, max_length=10)
-    health_check: str | None = None
-    cost_per_call: float | None = None
-    status: str | None = None
+    name: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = Field(default=None, min_length=10)
+    capabilities: Optional[list[str]] = None
+    input_schema: Optional[dict] = None
+    output_schema: Optional[dict] = None
+    endpoint: Optional[str] = Field(default=None, max_length=500)
+    version: Optional[str] = Field(default=None, max_length=50)
+    method: Optional[str] = Field(default=None, max_length=10)
+    health_check: Optional[str] = None
+    cost_per_call: Optional[float] = None
+    status: Optional[str] = None
 
     @field_validator("version")
     @classmethod
-    def validate_version(cls, v: str | None) -> str | None:
+    def validate_version(cls, v: Optional[str]) -> Optional[str]:
         """Validate optionally provided version string conforms to semantic versioning."""
         if v is not None and not SEMVER_PATTERN.match(v):
             raise ValueError("version must match semver pattern (e.g., 1.0.0)")
@@ -100,7 +101,7 @@ class ToolUpdateRequest(BaseModel):
 
     @field_validator("endpoint")
     @classmethod
-    def validate_endpoint(cls, v: str | None) -> str | None:
+    def validate_endpoint(cls, v: Optional[str]) -> Optional[str]:
         """Confirm the optionally updated endpoint remains a valid HTTP/HTTPS URL."""
         if v is not None and not URL_PATTERN.match(v):
             raise ValueError("endpoint must be a valid HTTP/HTTPS URL")
@@ -108,7 +109,7 @@ class ToolUpdateRequest(BaseModel):
 
     @field_validator("capabilities")
     @classmethod
-    def validate_capabilities(cls, v: list[str] | None) -> list[str] | None:
+    def validate_capabilities(cls, v: Optional[list[str]]) -> Optional[list[str]]:
         """Verify any incoming capability tags adhere strictly to naming rules."""
         if v is not None:
             for cap in v:
@@ -142,7 +143,7 @@ class ToolResponse(BaseModel):
     endpoint: str
     method: str
     version: str
-    health_check: str | None
+    health_check: Optional[str]
     status: str
     avg_latency_ms: float
     cost_per_call: float
@@ -173,7 +174,7 @@ class ToolSearchResponse(BaseModel):
     """
     results: list[ToolSearchResult]
     total: int
-    capability_filter: str | None = None
+    capability_filter: Optional[str] = None
 
 
 class ToolBindResponse(BaseModel):
@@ -195,11 +196,11 @@ class ToolHealthResponse(BaseModel):
     """
     tool_id: str
     status: str
-    latency_ms: float | None = None
+    latency_ms: Optional[float] = None
     checked_at: datetime
-    endpoint_checked: str | None = None
-    message: str | None = None
-    error: str | None = None
+    endpoint_checked: Optional[str] = None
+    message: Optional[str] = None
+    error: Optional[str] = None
 
 
 class ToolStatsItem(BaseModel):
@@ -215,7 +216,7 @@ class ToolStatsItem(BaseModel):
     avg_latency_ms: float
     p50_latency_ms: float
     p95_latency_ms: float
-    last_invoked_at: datetime | None
+    last_invoked_at: Optional[datetime]
     status: str
 
 
@@ -226,7 +227,7 @@ class ToolStatsResponse(BaseModel):
     stats: list[ToolStatsItem]
     total_tools: int
     total_invocations: int
-    since: str | None = None
+    since: Optional[str] = None
 
 
 class UsageLogCreateRequest(BaseModel):
@@ -234,8 +235,8 @@ class UsageLogCreateRequest(BaseModel):
     Input schema defining the required structure for asynchronously recording a new metric invocation log.
     """
     tool_id: str
-    agent_id: str | None = None
-    session_id: str | None = None
+    agent_id: Optional[str] = None
+    session_id: Optional[str] = None
     latency_ms: float = Field(..., ge=0)
     success: bool
-    error_message: str | None = None
+    error_message: Optional[str] = None

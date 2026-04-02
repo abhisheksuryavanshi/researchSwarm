@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy import DateTime, Float, ForeignKey, Index, String, Text, func
 from sqlalchemy.dialects.mysql import JSON as MySQLJSON
@@ -22,7 +23,7 @@ class Tool(Base):
     method: Mapped[str] = mapped_column(String(10), default="POST", server_default="POST")
     input_schema: Mapped[dict] = mapped_column(MySQLJSON, nullable=False)
     output_schema: Mapped[dict] = mapped_column(MySQLJSON, nullable=False)
-    health_check: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    health_check: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(
         String(20), default="active", server_default="active"
     )
@@ -76,11 +77,11 @@ class ToolUsageLog(Base):
     tool_id: Mapped[str] = mapped_column(
         String(100), ForeignKey("tools.tool_id"), nullable=False
     )
-    agent_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    session_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    agent_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    session_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     latency_ms: Mapped[float] = mapped_column(Float, nullable=False)
     success: Mapped[bool] = mapped_column(nullable=False)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     invoked_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

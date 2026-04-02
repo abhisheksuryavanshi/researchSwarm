@@ -54,7 +54,7 @@ class ToolDiscoveryTool(BaseTool):
 3. When LLM selection fails, MUST fall back to lowest `avg_latency_ms` from search results
 4. MUST call `RegistryClient.bind(tool_id)` for each tool before invocation
 5. MUST construct payload via `build_tool_payload()` using the tool's `args_schema`
-6. MUST enforce per-tool timeout (`asyncio.timeout(config.tool_invocation_timeout_seconds)`)
+6. MUST enforce per-tool timeout (`asyncio.wait_for(..., timeout=config.tool_invocation_timeout_seconds)`)
 7. On tool failure, MUST attempt next-ranked alternative up to `config.max_tool_fallback_attempts` total
 8. MUST log every attempt to registry via `RegistryClient.log_usage()` with agent_id, session_id, latency_ms, success, error_message
 9. MUST return a `ToolDiscoveryResult` serialized as JSON string

@@ -97,6 +97,7 @@ async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) 
         query=state["query"],
         constraints=constraints,
         gaps=gaps,
+        iteration_count=it,
         agent_id="researcher",
         session_id=state["session_id"],
         trace_id=state["trace_id"],

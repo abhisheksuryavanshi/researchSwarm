@@ -1,5 +1,11 @@
+from __future__ import annotations
+
+import logging
+import sys
 import time
 import uuid
+from pathlib import Path
+from typing import TextIO
 
 import structlog
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -7,11 +13,41 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 
-def configure_logging(log_level: str = "INFO") -> None:
+class _TeeTextIO:
+    """Write the same bytes to stdout and a log file (line-oriented structlog output)."""
+
+    __slots__ = ("_streams",)
+
+    def __init__(self, *streams: TextIO) -> None:
+        self._streams = streams
+
+    def write(self, s: str) -> int:
+        for stream in self._streams:
+            stream.write(s)
+        return len(s)
+
+    def flush(self) -> None:
+        for stream in self._streams:
+            stream.flush()
+
+
+def _log_level_int(name: str) -> int:
+    """Map log level string to logging int for structlog filtering."""
+    key = (name or "INFO").upper()
+    level = getattr(logging, key, None)
+    return level if isinstance(level, int) else logging.INFO
+
+
+def configure_logging(log_level: str = "INFO", log_directory: str = "logs") -> None:
     """
     Configure structured JSON logging for the application.
-    Sets up processors for timestamps, log levels, and exceptions.
+    Writes JSON lines to ``{log_directory}/backend.jsonl`` and mirrors them to stdout.
     """
+    log_dir = Path(log_directory)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    backend_log = log_dir / "backend.jsonl"
+    log_file = open(backend_log, "a", encoding="utf-8", buffering=1)
+    out = _TeeTextIO(sys.stdout, log_file)
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
@@ -21,11 +57,9 @@ def configure_logging(log_level: str = "INFO") -> None:
             structlog.processors.format_exc_info,
             structlog.processors.JSONRenderer(),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            structlog.get_level_from_name(log_level)
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(_log_level_int(log_level)),
         context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
+        logger_factory=structlog.PrintLoggerFactory(file=out),
         cache_logger_on_first_use=True,
     )
 
@@ -61,6 +95,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             "request_started",
             method=request.method,
             path=str(request.url.path),
+            authorization_header_present=bool(request.headers.get("authorization")),
         )
 
         response = await call_next(request)

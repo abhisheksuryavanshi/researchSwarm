@@ -68,6 +68,48 @@ async def test_registry_client_search_bind_invoke_log():
 
 
 @pytest.mark.asyncio
+async def test_invoke_get_expands_path_placeholders():
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        u = str(request.url)
+        if (
+            "en.wikipedia.org" in u
+            and "/page/summary/" in u
+            and ("Paris" in u or "Paris%2C%20France" in u)
+        ):
+            return httpx.Response(
+                200,
+                json={
+                    "title": "Paris, France",
+                    "extract": "Capital city.",
+                    "content_urls": {
+                        "desktop": {"page": "https://en.wikipedia.org/wiki/Paris,_France"}
+                    },
+                },
+            )
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    tool_client = httpx.AsyncClient(transport=transport)
+    cfg = AgentConfig.model_validate({"registry_base_url": "http://registry"})
+    reg_http = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda r: httpx.Response(404)),
+        base_url="http://registry",
+    )
+    rc = RegistryClient(cfg, client=reg_http, tool_client=tool_client)
+    data = await rc.invoke(
+        "https://en.wikipedia.org/api/rest_v1/page/summary/{query}",
+        "GET",
+        {"query": "Paris, France"},
+    )
+    assert data["title"] == "Paris, France"
+    assert calls and "/page/summary/" in calls[0]
+    await rc.aclose()
+
+
+@pytest.mark.asyncio
 async def test_registry_client_search_connection_error():
     cfg = AgentConfig.model_validate({"registry_base_url": "http://127.0.0.1:1"})
     rc = RegistryClient(cfg)

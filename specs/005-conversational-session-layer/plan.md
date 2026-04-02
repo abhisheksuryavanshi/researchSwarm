@@ -10,7 +10,7 @@ Introduce a **conversational layer** package that owns **session lifecycle**, **
 
 ## Technical Context
 
-**Language/Version**: Python 3.11+  
+**Language/Version**: Python 3.9+  
 **Primary Dependencies**: LangGraph >=1.1, langchain-core >=0.3, langchain-google-genai >=2.0 (or equivalent LLM for classification), **redis** (async client), **SQLAlchemy 2.0+ async**, **aiomysql** (MySQL async driver, already used by the registry), httpx (registry unchanged), langfuse >=2.0, structlog >=24  
 **Storage**: **Redis** — active session working set, per-session lock/queue metadata, optional cache of latest snapshot id; **MySQL** — session rows, turn log, durable state snapshots (JSON columns), idempotency records (same technology as the tool registry; shared DB URL or dedicated MySQL instance per deployment)  
 **Testing**: pytest, pytest-asyncio; Testcontainers or docker-compose fixtures for Redis + MySQL in integration tests; contract tests for session API schemas and coordinator routing decisions  

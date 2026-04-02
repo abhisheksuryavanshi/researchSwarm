@@ -9,7 +9,7 @@ Extract the Researcher's existing inline search → bind → invoke logic into a
 
 ## Technical Context
 
-**Language/Version**: Python 3.11+
+**Language/Version**: Python 3.9+
 **Primary Dependencies**: LangGraph >=1.1, langchain-core >=0.3, langchain-google-genai >=2.0 (Gemini 2.0 Flash default), httpx (registry client), langfuse >=2.0 (LLM tracing)
 **Storage**: No new storage. Uses existing registry DB via HTTP API for tool lookups and usage logging.
 **Testing**: pytest, pytest-asyncio (existing setup)

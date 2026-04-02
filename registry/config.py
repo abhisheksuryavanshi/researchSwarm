@@ -13,6 +13,10 @@ class Settings(BaseSettings):
         "mysql+aiomysql://root:root@localhost:3306/researchswarm"
     )
     log_level: str = Field(default="INFO")
+    log_directory: str = Field(
+        default="logs",
+        description="Directory for backend.jsonl; relative to cwd unless absolute.",
+    )
 
 
 settings = Settings()
