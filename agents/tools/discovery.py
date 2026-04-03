@@ -23,6 +23,7 @@ from agents.response_models import (
 from agents.tools.registry_client import RegistryClient
 from agents.tracing import (
     current_trace_excerpt_max,
+    get_langfuse_client,
     get_logger,
     is_langfuse_run_enabled,
     langfuse_run_metadata_dict,
@@ -244,22 +245,43 @@ def _html_to_plaintext(html: str) -> str:
     return s
 
 
+def _wikipedia_title_rank(title: str) -> tuple:
+    """Lower tuple sorts first: prefer main topic articles over season/list pages."""
+    tl = title.lower()
+    has_season_number = bool(re.search(r"\bseason\s+\d+\b", tl))
+    is_list_like = tl.startswith("list of ") or (
+        "list" in tl and ("episode" in tl or "episodes" in tl)
+    )
+    return (has_season_number, is_list_like, len(title))
+
+
 def _wikipedia_title_from_query_response(data: dict[str, Any]) -> Optional[str]:
+    """Pick one Wikipedia page title for enrichment and citations.
+
+    With ``generator=search`` and ``gsrlimit=1``, the API often returns a sub-article
+    (e.g. ``Rick and Morty season 6``) ahead of the main ``Rick and Morty`` article for
+    broad queries — then the whole graph faithfully summarizes the wrong page. We request
+    multiple hits and prefer titles without ``season N`` / list-of patterns when possible.
+    """
     q = data.get("query")
     if not isinstance(q, dict):
         return None
     pages = q.get("pages")
     if not isinstance(pages, dict) or not pages:
         return None
-    row = next(iter(pages.values()), None)
-    if not isinstance(row, dict):
+    titles: list[str] = []
+    for row in pages.values():
+        if not isinstance(row, dict) or row.get("missing"):
+            continue
+        t = row.get("title")
+        if isinstance(t, str) and t.strip():
+            titles.append(t.strip())
+    if not titles:
         return None
-    if row.get("missing"):
-        return None
-    title = row.get("title")
-    if not title:
-        return None
-    return str(title)
+    if len(titles) == 1:
+        return titles[0]
+    titles.sort(key=_wikipedia_title_rank)
+    return titles[0]
 
 
 async def _maybe_enrich_wikipedia_article(
@@ -378,19 +400,24 @@ def _wikipedia_rest_desktop_url(data: dict[str, Any]) -> str:
 
 
 def _mediawiki_api_page_url_title(data: dict[str, Any]) -> tuple[str, str]:
-    """First page from action=query JSON (e.g. generator=search + prop=extracts|info)."""
+    """URL + title for the same primary page chosen for Wikipedia enrichment."""
     q = data.get("query")
     if not isinstance(q, dict):
         return "", ""
     pages = q.get("pages")
     if not isinstance(pages, dict) or not pages:
         return "", ""
-    row = next(iter(pages.values()), None)
-    if not isinstance(row, dict):
+    pick = _wikipedia_title_from_query_response(data)
+    if not pick:
         return "", ""
-    url = str(row.get("fullurl") or row.get("canonicalurl") or "")
-    title = str(row.get("title") or "")
-    return url, title
+    for row in pages.values():
+        if not isinstance(row, dict):
+            continue
+        if str(row.get("title") or "") != pick:
+            continue
+        url = str(row.get("fullurl") or row.get("canonicalurl") or "")
+        return url, pick
+    return "", pick
 
 
 def _source_from_data(
@@ -564,19 +591,21 @@ class ToolDiscoveryTool(BaseTool):
                     gaps=gaps,
                     args_schema=bind_info.get("args_schema"),
                 )
-                if is_langfuse_run_enabled():
+                if tool_id == WIKIPEDIA_LOOKUP_TOOL_ID:
                     try:
-                        from langfuse import get_client
-                        from langfuse.types import TraceContext
-
-                        lf = get_client()
-                        if lf:
-                            span_obj = lf.start_observation(
-                                trace_context=TraceContext(
-                                    trace_id=trace_id_for_langfuse(inp.trace_id)
-                                ),
+                        gl = int(payload.get("gsrlimit", 1) or 1)
+                    except (TypeError, ValueError):
+                        gl = 1
+                    if gl < 5:
+                        payload["gsrlimit"] = 8
+                if is_langfuse_run_enabled():
+                    lf = get_langfuse_client()
+                    if lf is not None:
+                        try:
+                            norm_tid = trace_id_for_langfuse(inp.trace_id)
+                            trace_ref = lf.trace(id=norm_tid)
+                            span_obj = trace_ref.span(
                                 name=f"tool:{tool_id}",
-                                as_type="tool",
                                 input=truncate_for_trace(
                                     json.dumps(payload, default=str),
                                     max_c,
@@ -591,8 +620,14 @@ class ToolDiscoveryTool(BaseTool):
                                     "agent_id": inp.agent_id or "tool_discovery",
                                 },
                             )
-                    except Exception:
-                        span_obj = None
+                        except Exception as exc:
+                            await log.aerror(
+                                "langfuse_tool_span_failed",
+                                tool_id=tool_id,
+                                error=str(exc),
+                                exc_info=True,
+                            )
+                            span_obj = None
                 out = await asyncio.wait_for(dyn.ainvoke(payload), timeout=timeout_s)
                 raw_data = out if isinstance(out, dict) else {"result": out}
                 await _maybe_enrich_wikipedia_article(
@@ -626,8 +661,12 @@ class ToolDiscoveryTool(BaseTool):
                                 level="ERROR",
                                 status_message=err_msg or "invoke failed",
                             ).end()
-                    except Exception:
-                        pass
+                    except Exception as span_exc:
+                        await log.aerror(
+                            "langfuse_tool_span_end_failed",
+                            tool_id=tool_id,
+                            error=str(span_exc),
+                        )
                 latency_ms = (time.perf_counter() - start) * 1000
                 attempts.append(
                     InvocationAttempt(

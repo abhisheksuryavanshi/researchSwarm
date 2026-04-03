@@ -10,7 +10,7 @@ from agents.context import GraphContext
 from agents.prompts import synthesizer as prompts
 from agents.response_models import SynthesisResponse
 from agents.state import ResearchState
-from agents.tracing import get_logger, get_tracer, llm_invoke_config, tokens_from_raw_message
+from agents.tracing import emit_progress, get_logger, get_tracer, llm_invoke_config, tokens_from_raw_message
 
 
 async def synthesizer_node(state: ResearchState, runtime: Runtime[GraphContext]) -> dict[str, Any]:
@@ -28,6 +28,7 @@ async def synthesizer_node(state: ResearchState, runtime: Runtime[GraphContext])
         callbacks.append(t)
     cb_cfg = llm_invoke_config(state, callbacks)
 
+    await emit_progress("synthesizer")
     await log.ainfo("node_enter", node="synthesizer")
 
     cp = state.get("critique_pass", False)

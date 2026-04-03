@@ -12,7 +12,7 @@ from agents.prompts import researcher as prompts
 from agents.response_models import ToolDiscoveryInput, ToolDiscoveryResult
 from agents.state import ResearchState
 from agents.tools.discovery import ToolDiscoveryTool, _search_summary
-from agents.tracing import get_logger, get_tracer, llm_invoke_config
+from agents.tracing import emit_progress, get_logger, get_tracer, llm_invoke_config
 
 
 async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) -> dict[str, Any]:
@@ -32,6 +32,7 @@ async def researcher_node(state: ResearchState, runtime: Runtime[GraphContext]) 
         callbacks.append(t)
     cb_cfg = llm_invoke_config(state, callbacks)
 
+    await emit_progress("researcher")
     await log.ainfo("node_enter", node="researcher")
 
     constraints = state.get("constraints") or {}

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import json
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from agents.graph import GraphTimeoutError
 from conversation.authz import SESSION_NOT_FOUND
 from conversation.coordinator import (
     ConversationCoordinator,
@@ -59,15 +62,46 @@ async def create_session(
 
 @router.post("/v1/sessions/{session_id}/turns")
 async def post_turn(
+    request: Request,
     session_id: str,
     body: TurnRequest,
     owner: Annotated[str, Depends(_principal)],
     coord: Annotated[ConversationCoordinator, Depends(_coordinator)],
     idempotency_key: Annotated[Optional[str], Header(alias="Idempotency-Key")] = None,
 ):
-    import uuid
-
     trace_id = str(uuid.uuid4())
+    accept = request.headers.get("accept", "")
+    wants_stream = "text/event-stream" in accept
+
+    if wants_stream:
+        async def _sse_generator():
+            try:
+                async for chunk in coord.run_turn_streaming(
+                    owner_principal_id=owner,
+                    session_id=session_id,
+                    message=body.message.strip(),
+                    trace_id=trace_id,
+                    client_session_id=body.client_session_id,
+                    idempotency_key=idempotency_key.strip() if idempotency_key else None,
+                ):
+                    yield chunk
+            except SessionAccessDenied:
+                yield f"event: error\ndata: {json.dumps(SESSION_NOT_FOUND)}\n\n"
+            except IdempotencyConflictError:
+                yield f"event: error\ndata: {json.dumps(IdempotencyMismatchBody().model_dump())}\n\n"
+            except (StorageDegradedError, CoordinatorLockTimeoutError):
+                yield f"event: error\ndata: {json.dumps(SessionDegradedErrorBody().model_dump())}\n\n"
+            except GraphTimeoutError as exc:
+                yield f"event: error\ndata: {json.dumps({'detail': str(exc), 'trace_id': trace_id, 'code': 'graph_timeout'})}\n\n"
+            except Exception as exc:
+                yield f"event: error\ndata: {json.dumps({'detail': str(exc), 'code': 'internal_error'})}\n\n"
+
+        return StreamingResponse(
+            _sse_generator(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     try:
         result = await coord.run_turn(
             owner_principal_id=owner,
@@ -93,6 +127,15 @@ async def post_turn(
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content=SessionDegradedErrorBody().model_dump(),
+        )
+    except GraphTimeoutError as exc:
+        return JSONResponse(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            content={
+                "detail": str(exc),
+                "trace_id": trace_id,
+                "code": "graph_timeout",
+            },
         )
 
     return result.model_dump()

@@ -22,14 +22,21 @@ from agents.tools.discovery import ToolDiscoveryTool
 from agents.tools.registry_client import RegistryClient
 from agents.tracing import (
     bind_langfuse_run_enabled,
+    bind_progress_queue,
     bind_trace_excerpt_max,
+    flush_langfuse,
     reset_langfuse_run_enabled,
+    reset_progress_queue,
     reset_trace_excerpt_max,
 )
 
 
 class GraphBusyError(RuntimeError):
     """Another graph invocation is still running (single-flight guard)."""
+
+
+class GraphTimeoutError(RuntimeError):
+    """``asyncio.wait_for`` exceeded ``AgentConfig.graph_timeout_seconds``."""
 
 
 _run_lock = asyncio.Lock()
@@ -144,16 +151,80 @@ async def invoke_research_graph_continuation(
             "graph_continuation_start",
             query_preview=str(merged.get("query", ""))[:200],
         )
-        result = await asyncio.wait_for(
-            compiled.ainvoke(merged, context=context),
-            timeout=context["agent_config"].graph_timeout_seconds,
-        )
+        try:
+            result = await asyncio.wait_for(
+                compiled.ainvoke(merged, context=context),
+                timeout=context["agent_config"].graph_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            to = context["agent_config"].graph_timeout_seconds
+            await log.aerror("graph_timeout", timeout_seconds=to)
+            raise GraphTimeoutError(
+                f"Research graph exceeded {to}s (graph_timeout_seconds)"
+            ) from None
         await log.ainfo("graph_continuation_complete")
         return result
     finally:
+        if context["agent_config"].langfuse_enabled:
+            flush_langfuse()
         structlog.contextvars.clear_contextvars()
         reset_trace_excerpt_max(excerpt_tok)
         reset_langfuse_run_enabled(lf_tok)
+        async with _run_lock:
+            _busy = False
+
+
+async def invoke_research_graph_continuation_with_progress(
+    compiled,
+    input_state: dict,
+    context: GraphContext,
+    progress_queue: asyncio.Queue,
+) -> dict:
+    """Like ``invoke_research_graph_continuation`` but binds a progress queue
+    so that each node can emit stage events via ``emit_progress()``."""
+    global _busy
+    raw = {k: v for k, v in input_state.items() if v is not None}
+    merged = merge_graph_continuation(raw, context["agent_config"].max_iterations)
+    async with _run_lock:
+        if _busy:
+            raise GraphBusyError("Research graph is already executing")
+        _busy = True
+    excerpt_tok = bind_trace_excerpt_max(context["agent_config"].trace_excerpt_max_chars)
+    lf_tok = bind_langfuse_run_enabled(context["agent_config"].langfuse_enabled)
+    pq_tok = bind_progress_queue(progress_queue)
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(
+        session_id=merged["session_id"],
+        trace_id=merged["trace_id"],
+        client_session_id=merged.get("client_session_id"),
+        agent_id="graph",
+    )
+    log = structlog.get_logger()
+    try:
+        await log.ainfo(
+            "graph_continuation_start",
+            query_preview=str(merged.get("query", ""))[:200],
+        )
+        try:
+            result = await asyncio.wait_for(
+                compiled.ainvoke(merged, context=context),
+                timeout=context["agent_config"].graph_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            to = context["agent_config"].graph_timeout_seconds
+            await log.aerror("graph_timeout", timeout_seconds=to)
+            raise GraphTimeoutError(
+                f"Research graph exceeded {to}s (graph_timeout_seconds)"
+            ) from None
+        await log.ainfo("graph_continuation_complete")
+        return result
+    finally:
+        if context["agent_config"].langfuse_enabled:
+            flush_langfuse()
+        structlog.contextvars.clear_contextvars()
+        reset_trace_excerpt_max(excerpt_tok)
+        reset_langfuse_run_enabled(lf_tok)
+        reset_progress_queue(pq_tok)
         async with _run_lock:
             _busy = False
 
@@ -194,13 +265,22 @@ async def invoke_research_graph(
             "graph_invoke_start",
             query_preview=str(merged.get("query", ""))[:200],
         )
-        result = await asyncio.wait_for(
-            compiled.ainvoke(merged, context=context),
-            timeout=context["agent_config"].graph_timeout_seconds,
-        )
+        try:
+            result = await asyncio.wait_for(
+                compiled.ainvoke(merged, context=context),
+                timeout=context["agent_config"].graph_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            to = context["agent_config"].graph_timeout_seconds
+            await log.aerror("graph_timeout", timeout_seconds=to)
+            raise GraphTimeoutError(
+                f"Research graph exceeded {to}s (graph_timeout_seconds)"
+            ) from None
         await log.ainfo("graph_invoke_complete")
         return result
     finally:
+        if context["agent_config"].langfuse_enabled:
+            flush_langfuse()
         structlog.contextvars.clear_contextvars()
         reset_trace_excerpt_max(excerpt_tok)
         reset_langfuse_run_enabled(lf_tok)

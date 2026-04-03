@@ -36,9 +36,11 @@ WIKIPEDIA_LOOKUP_TOOL: dict = {
             "generator": {"type": "string", "default": "search"},
             "gsrsearch": {
                 "type": "string",
-                "description": "Natural language question or keywords (filled from the research query)",
+                "description": (
+                    "Natural language question or keywords (filled from the research query)"
+                ),
             },
-            "gsrlimit": {"type": "integer", "default": 1},
+            "gsrlimit": {"type": "integer", "default": 8},
             "gsrnamespace": {"type": "integer", "default": 0},
             "prop": {"type": "string", "default": "extracts|info"},
             "inprop": {"type": "string", "default": "url"},

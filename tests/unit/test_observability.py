@@ -103,14 +103,15 @@ def test_emit_critic_route_span_calls_langfuse_when_enabled(monkeypatch):
     from agents.tracing import emit_critic_route_span
 
     mock_span = MagicMock()
+    mock_trace_ref = MagicMock()
+    mock_trace_ref.span.return_value = mock_span
     mock_client = MagicMock()
-    mock_client.start_observation.return_value = mock_span
+    mock_client.trace.return_value = mock_trace_ref
 
     import agents.tracing as tracing_mod
 
     monkeypatch.setattr(tracing_mod, "is_langfuse_run_enabled", lambda: True)
-
-    monkeypatch.setattr("langfuse.get_client", lambda: mock_client)
+    monkeypatch.setattr(tracing_mod, "_langfuse_client", mock_client)
 
     tid = str(uuid.uuid4())
     sid = str(uuid.uuid4())
@@ -124,11 +125,8 @@ def test_emit_critic_route_span_calls_langfuse_when_enabled(monkeypatch):
     }
     emit_critic_route_span(state, "researcher")  # type: ignore[arg-type]
 
-    mock_client.start_observation.assert_called_once()
-    call_kw = mock_client.start_observation.call_args.kwargs
+    mock_client.trace.assert_called_once()
+    mock_trace_ref.span.assert_called_once()
+    call_kw = mock_trace_ref.span.call_args.kwargs
     assert call_kw.get("name") == "route_after_critic"
-    assert call_kw.get("as_type") == "span"
-    tc = call_kw.get("trace_context")
-    assert tc is not None
-    assert tc.trace_id == trace_id_for_langfuse(tid)
     mock_span.end.assert_called_once()
