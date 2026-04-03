@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 import httpx
 import structlog
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from registry.config import settings
@@ -91,6 +92,24 @@ def create_app() -> FastAPI:
     )
 
     application.add_middleware(RequestLoggingMiddleware)
+
+    _cors_origins = [
+        o.strip() for o in settings.cors_origins.split(",") if o.strip()
+    ]
+    # CORSMiddleware last so it wraps all responses (FastAPI / Starlette convention).
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "X-Trace-ID",
+            "X-Session-ID",
+            "Idempotency-Key",
+        ],
+    )
 
     from conversation.api.routes import router as conversation_router
     from registry.routers import bind, health, register, search, stats, usage

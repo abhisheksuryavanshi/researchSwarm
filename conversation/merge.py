@@ -55,8 +55,15 @@ def build_engine_input(
     *,
     client_session_id: Optional[str] = None,
     constraints_patch: Optional[dict[str, Any]] = None,
+    conversation_intent: str = "new_query",
 ) -> dict[str, Any]:
-    """Merge durable snapshot + new user text into a dict compatible with ``ResearchState``."""
+    """Merge durable snapshot + new user text into a dict compatible with ``ResearchState``.
+
+    Each HTTP turn runs one graph invocation; ``iteration_count`` always starts at 0 so the
+    researcher↔critic loop has a full ``max_iterations`` budget. For ``new_query``, prior
+    research artifacts from the snapshot are cleared so the researcher is not steered by stale
+    gaps or findings from an unrelated question.
+    """
     snap = snapshot or {}
     constraints = merge_constraint_dicts(dict(snap.get("constraints") or {}), constraints_patch)
     accumulated_context: list[str] = list(snap.get("accumulated_context") or [])
@@ -66,6 +73,22 @@ def build_engine_input(
     msg_list = _messages_from_snapshot(snap)
     msg_list.append(HumanMessage(content=user_message))
 
+    intent = (conversation_intent or "new_query").strip().lower()
+    if intent == "new_query":
+        raw_findings: list = []
+        sources: list = []
+        analysis = ""
+        critique = ""
+        critique_pass = False
+        gaps: list = []
+    else:
+        raw_findings = list(snap.get("raw_findings") or [])
+        sources = list(snap.get("sources") or [])
+        analysis = str(snap.get("analysis") or "")
+        critique = str(snap.get("critique") or "")
+        critique_pass = bool(snap.get("critique_pass", False))
+        gaps = list(snap.get("gaps") or [])
+
     return {
         "query": user_message,
         "trace_id": trace_id,
@@ -74,14 +97,14 @@ def build_engine_input(
         "constraints": constraints,
         "accumulated_context": accumulated_context,
         "messages": msg_list,
-        "raw_findings": list(snap.get("raw_findings") or []),
-        "sources": list(snap.get("sources") or []),
-        "analysis": str(snap.get("analysis") or ""),
-        "critique": str(snap.get("critique") or ""),
-        "critique_pass": bool(snap.get("critique_pass", False)),
-        "gaps": list(snap.get("gaps") or []),
+        "raw_findings": raw_findings,
+        "sources": sources,
+        "analysis": analysis,
+        "critique": critique,
+        "critique_pass": critique_pass,
+        "gaps": gaps,
         "synthesis": str(snap.get("synthesis") or ""),
-        "iteration_count": int(snap.get("iteration_count") or 0),
+        "iteration_count": 0,
     }
 
 

@@ -37,3 +37,9 @@ mysqldata/
 
 # Runtime logs (all backend file sinks; created by app / setup.sh)
 logs/
+
+# Operator web UI (Vite)
+web/node_modules/
+web/dist/
+web/.env
+web/coverage/

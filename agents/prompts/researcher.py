@@ -13,6 +13,11 @@ Constraints (JSON): {constraints}
 Registry search results (tool_id, name, description, capabilities):
 {search_summary}
 
+For time-sensitive or "who is / what is the current …" questions, prefer tools that retrieve \
+focused encyclopedic or official facts; when using title-based lookups (e.g. Wikipedia), plan for \
+a **specific article title** or follow-up lookup (e.g. the team or person page), not the raw \
+question string as the page name.
+
 Return the **smallest** set of tool_ids (1–3) that can gather relevant raw data for this query."""
 
 REFINEMENT_PROMPT = """This is iteration {iteration_count} (>0). The Critic reported gaps—address \

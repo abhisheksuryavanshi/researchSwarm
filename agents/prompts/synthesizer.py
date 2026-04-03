@@ -6,6 +6,8 @@ Respect format constraints if provided."""
 USER_PROMPT = """Question: {query}
 Analysis: {analysis}
 Raw findings: {raw_findings}
+Prefer evidence from `enriched_article_plaintext` in findings when present (full article text) over \
+brief extracts alone.
 Sources: {sources}
 Critique: {critique}
 Critique passed: {critique_pass}

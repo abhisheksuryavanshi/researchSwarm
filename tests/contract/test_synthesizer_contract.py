@@ -44,10 +44,13 @@ async def test_synthesizer_limitations_when_not_passed(mock_registry_client, age
             "sources": [{"url": "https://cite.test/x", "title": "Cite", "tool_id": "t"}],
             "critique": "weak",
             "critique_pass": False,
+            "gaps": ["Source does not state the effective date."],
         },
         agent_config.max_iterations,
     )
     llm = FakeStructuredLLM([SynthesisResponse(synthesis="# Out\nSome claim.")])
     ctx: GraphContext = {"llm": llm, "registry": mock_registry_client, "agent_config": agent_config}
     out = await synthesizer_node(state, Runtime(context=ctx))
-    assert "limitation" in out["synthesis"].lower()
+    syn = out["synthesis"].lower()
+    assert "limitation" in syn
+    assert "effective date" in syn

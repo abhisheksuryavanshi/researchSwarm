@@ -72,7 +72,20 @@ async def synthesizer_node(state: ResearchState, runtime: Runtime[GraphContext])
     text = parsed.synthesis if parsed else ""
 
     if not cp and "limitation" not in text.lower():
-        text = f"{text}\n\n## Limitations\nQuality gate did not pass; verify claims carefully."
+        raw_gaps = state.get("gaps") or []
+        gap_lines: list[str] = []
+        if isinstance(raw_gaps, list):
+            for g in raw_gaps:
+                if isinstance(g, str) and g.strip():
+                    gap_lines.append(g.strip())
+        if gap_lines:
+            bullets = "\n".join(f"- {line}" for line in gap_lines)
+            text = f"{text}\n\n## Limitations\n{bullets}"
+        else:
+            text = (
+                f"{text}\n\n## Limitations\n"
+                "Quality gate did not pass; verify claims carefully."
+            )
 
     total = state.get("token_usage", {}).get("synthesizer", 0) + tokens
     if total > getattr(acfg, "token_usage_warn_threshold", 100_000):

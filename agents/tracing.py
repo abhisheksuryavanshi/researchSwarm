@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import contextvars
+import hashlib
 import json
 import os
+import re
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Literal, Optional
 
@@ -47,6 +49,14 @@ def reset_langfuse_run_enabled(token: contextvars.Token[bool]) -> None:
 
 def is_langfuse_run_enabled() -> bool:
     return _langfuse_enabled_ctx.get()
+
+
+def trace_id_for_langfuse(trace_id: str) -> str:
+    """Langfuse trace ids must be 32 lowercase hex chars; normalize standard UUID strings."""
+    s = (trace_id or "").replace("-", "").lower()
+    if len(s) == 32 and re.fullmatch(r"[0-9a-f]{32}", s):
+        return s
+    return hashlib.sha256((trace_id or "").encode()).hexdigest()[:32]
 
 
 def truncate_for_trace(text: Optional[str], max_chars: int) -> str:
@@ -119,7 +129,8 @@ def get_tracer(
                 **kwargs,
             )
 
-    tc = TraceContext(trace_id=trace_id)
+    lf_trace_id = trace_id_for_langfuse(trace_id)
+    tc = TraceContext(trace_id=lf_trace_id)
     try:
         return _TruncatingLangfuseHandler(excerpt_max=lim, trace_context=tc)
     except Exception:  # pragma: no cover — Langfuse misconfiguration
@@ -188,7 +199,7 @@ def emit_critic_route_span(
             "destination": destination,
         }
         span = client.start_observation(
-            trace_context=TraceContext(trace_id=state["trace_id"]),
+            trace_context=TraceContext(trace_id=trace_id_for_langfuse(state["trace_id"])),
             name="route_after_critic",
             as_type="span",
             input=truncate_for_trace(json.dumps(summary, default=str), max_c),
