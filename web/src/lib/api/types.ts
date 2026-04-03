@@ -98,6 +98,8 @@ export interface StoredSession {
   expiresAt: string
 }
 
+export type StageName = 'classifying' | 'researcher' | 'analyst' | 'critic' | 'synthesizer'
+
 export interface Turn {
   turnIndex: number
   userMessage: string
@@ -111,4 +113,6 @@ export interface Turn {
   timestamp: string
   /** True while waiting for POST /turns response */
   awaitingAssistant?: boolean
+  /** Current processing stage (while awaitingAssistant) */
+  currentStage?: StageName | null
 }

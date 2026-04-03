@@ -14,7 +14,7 @@ def test_agent_config_defaults():
     assert c.llm_max_retries == 3
     assert c.llm_retries_enabled is False
     assert c.max_iterations == 3
-    assert c.graph_timeout_seconds == 60
+    assert c.graph_timeout_seconds == 180
     assert c.wikipedia_enrich_with_parse is True
     assert c.wikipedia_max_article_chars == 100_000
 

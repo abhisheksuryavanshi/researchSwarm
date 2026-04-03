@@ -6,7 +6,12 @@ from structlog.testing import capture_logs
 
 from agents.config import AgentConfig
 from agents.context import GraphContext
-from agents.graph import GraphBusyError, build_research_graph, invoke_research_graph
+from agents.graph import (
+    GraphBusyError,
+    GraphTimeoutError,
+    build_research_graph,
+    invoke_research_graph,
+)
 from agents.response_models import (
     AnalysisResponse,
     CritiqueResponse,
@@ -132,8 +137,7 @@ async def test_graph_timeout(mock_registry_client):
     ctx: GraphContext = {"llm": llm, "registry": mock_registry_client, "agent_config": cfg}
     graph = build_research_graph()
     tid = str(uuid.uuid4())
-    # asyncio.wait_for raises asyncio.TimeoutError on 3.9; builtin TimeoutError from 3.10+.
-    with pytest.raises(asyncio.TimeoutError):
+    with pytest.raises(GraphTimeoutError, match="exceeded 1s"):
         await invoke_research_graph(
             graph,
             {"query": "What?", "trace_id": tid, "session_id": "to"},

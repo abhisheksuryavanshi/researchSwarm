@@ -27,7 +27,7 @@ class AgentConfig(BaseSettings):
         ),
     )
     max_iterations: int = 3
-    graph_timeout_seconds: int = 60
+    graph_timeout_seconds: int = 180
     registry_base_url: str = "http://localhost:8000"
     tool_invocation_timeout_seconds: int = 30
     max_tool_fallback_attempts: int = 3

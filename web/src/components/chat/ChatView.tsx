@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FetchApiError } from '../../lib/api/client'
-import { postTurn } from '../../lib/api/sessions'
-import type { Turn } from '../../lib/api/types'
+import { postTurnStreaming } from '../../lib/api/sessions'
+import type { StageName, Turn, TurnResult } from '../../lib/api/types'
 import { useSession } from '../../lib/hooks/useSession'
 import { Button } from '../ui/Button'
 import { ErrorBanner } from '../ui/ErrorBanner'
@@ -11,7 +11,7 @@ import { SessionHeader } from './SessionHeader'
 
 function turnFromResponse(
   userMessage: string,
-  r: Awaited<ReturnType<typeof postTurn>>,
+  r: TurnResult,
   timestamp: string,
 ): Turn {
   return {
@@ -68,11 +68,26 @@ export function ChatView() {
       engineEntry: null,
       timestamp: ts,
       awaitingAssistant: true,
+      currentStage: null,
     }
     setTurns((t) => [...t, pending])
     setSending(true)
     try {
-      const result = await postTurn(sessionId, principalId, trimmed)
+      const result = await postTurnStreaming(
+        sessionId,
+        principalId,
+        trimmed,
+        (stage: StageName) => {
+          setTurns((t) => {
+            const next = [...t]
+            const i = next.findIndex((x) => x.timestamp === ts && x.awaitingAssistant)
+            if (i >= 0) {
+              next[i] = { ...next[i], currentStage: stage }
+            }
+            return next
+          })
+        },
+      )
       setTurns((t) => {
         const next = [...t]
         const i = next.findIndex((x) => x.timestamp === ts && x.awaitingAssistant)

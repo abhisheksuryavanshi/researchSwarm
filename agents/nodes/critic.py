@@ -12,6 +12,7 @@ from agents.response_models import CritiqueResponse
 from agents.state import ResearchState
 from agents.tracing import (
     emit_critic_route_span,
+    emit_progress,
     get_logger,
     get_tracer,
     llm_invoke_config,
@@ -45,6 +46,7 @@ async def critic_node(state: ResearchState, runtime: Runtime[GraphContext]) -> d
         callbacks.append(t)
     cb_cfg = llm_invoke_config(state, callbacks)
 
+    await emit_progress("critic")
     await log.ainfo("node_enter", node="critic")
 
     body = prompts.USER_PROMPT.format(

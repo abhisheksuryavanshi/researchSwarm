@@ -57,3 +57,17 @@ def test_wikipedia_title_from_query_response():
         )
         is None
     )
+
+
+def test_wikipedia_title_prefers_main_article_over_season_spinoff():
+    """gsrlimit=1 often returns a season page first; we rank so the series article wins."""
+    data = {
+        "query": {
+            "pages": {
+                "10": {"title": "Rick and Morty season 6", "extract": "S6…"},
+                "20": {"title": "Rick and Morty", "extract": "Main…"},
+                "30": {"title": "List of Rick and Morty episodes", "extract": "List…"},
+            }
+        }
+    }
+    assert _wikipedia_title_from_query_response(data) == "Rick and Morty"

@@ -10,7 +10,7 @@ from agents.context import GraphContext
 from agents.prompts import analyst as prompts
 from agents.response_models import AnalysisResponse
 from agents.state import ResearchState
-from agents.tracing import get_logger, get_tracer, llm_invoke_config, tokens_from_raw_message
+from agents.tracing import emit_progress, get_logger, get_tracer, llm_invoke_config, tokens_from_raw_message
 
 
 async def analyst_node(state: ResearchState, runtime: Runtime[GraphContext]) -> dict[str, Any]:
@@ -28,6 +28,7 @@ async def analyst_node(state: ResearchState, runtime: Runtime[GraphContext]) -> 
         callbacks.append(t)
     cb_cfg = llm_invoke_config(state, callbacks)
 
+    await emit_progress("analyst")
     await log.ainfo("node_enter", node="analyst")
 
     findings = state.get("raw_findings") or []

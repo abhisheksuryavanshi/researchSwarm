@@ -63,9 +63,9 @@ else
   RUN=(./.venv/bin/python -m)
 fi
 
-# --- MySQL via Compose ---
-docker compose up -d mysql
-ok "Docker Compose service mysql is up (docker compose up -d mysql)"
+# --- MySQL + Langfuse via Compose ---
+docker compose up -d mysql langfuse
+ok "Docker Compose services mysql + langfuse started"
 
 echo "Waiting for MySQL to accept connections..."
 mysql_ready=0
@@ -80,6 +80,22 @@ if [[ "$mysql_ready" -ne 1 ]]; then
   fail "MySQL did not become ready in time. Try: docker compose logs mysql"
 fi
 ok "MySQL is reachable"
+
+echo "Waiting for Langfuse to be ready (http://localhost:3000)..."
+langfuse_ready=0
+for _ in $(seq 1 60); do
+  if curl -sf -o /dev/null "http://localhost:3000/api/public/health" 2>/dev/null; then
+    langfuse_ready=1
+    break
+  fi
+  sleep 3
+done
+if [[ "$langfuse_ready" -ne 1 ]]; then
+  warn "Langfuse did not become ready in time. Try: docker compose logs langfuse"
+  warn "Tracing will be unavailable until Langfuse starts. The app will still work."
+else
+  ok "Langfuse is ready at http://localhost:3000"
+fi
 
 # --- Redis (not in docker-compose.yml) ---
 if docker ps -a --format '{{.Names}}' | grep -qx "$REDIS_CONTAINER_NAME"; then
@@ -162,6 +178,10 @@ else
 fi
 
 echo ""
-ok "Setup finished. API: http://127.0.0.1:8000/docs · UI: http://127.0.0.1:5173"
+ok "Setup finished."
+echo "    API:      http://127.0.0.1:8000/docs"
+echo "    UI:       http://127.0.0.1:5173"
+echo "    Langfuse: http://localhost:3000  (login: admin@local.dev / localdev12)"
+echo ""
 echo "⚠️  TODO: Set GROQ_API_KEY in .env for live Groq LLM calls (or LLM_PROVIDER=google + GOOGLE_API_KEY for Gemini)."
 echo "⚠️  TODO: Add CONVERSATION_* vars to .env if you rely on session APIs; see SETUP.md."
