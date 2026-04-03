@@ -245,23 +245,47 @@ def _html_to_plaintext(html: str) -> str:
     return s
 
 
-def _wikipedia_title_rank(title: str) -> tuple:
-    """Lower tuple sorts first: prefer main topic articles over season/list pages."""
+_TITLE_RANK_STOPWORDS = frozenset({
+    "a", "an", "the", "is", "are", "was", "were", "of", "in", "on", "to",
+    "for", "by", "some", "what", "who", "which", "how", "do", "does", "did",
+    "can", "his", "her", "their", "its", "popular", "top", "best", "many",
+})
+
+
+def _wikipedia_title_rank(title: str, query: str = "") -> tuple:
+    """Lower tuple sorts first: prefer main topic articles over season/list pages.
+
+    When *query* is provided, titles sharing more significant words with the
+    query rank higher (negative overlap comes earlier).  This prevents short
+    but irrelevant titles (e.g. "Anagram") from beating the correct article
+    (e.g. "Imagine Dragons") just because they are shorter.
+    """
     tl = title.lower()
     has_season_number = bool(re.search(r"\bseason\s+\d+\b", tl))
     is_list_like = tl.startswith("list of ") or (
         "list" in tl and ("episode" in tl or "episodes" in tl)
     )
-    return (has_season_number, is_list_like, len(title))
+    if query:
+        query_words = set(query.lower().split()) - _TITLE_RANK_STOPWORDS
+        title_words = set(tl.split())
+        overlap = len(query_words & title_words)
+    else:
+        overlap = 0
+    return (has_season_number, is_list_like, -overlap, len(title))
 
 
-def _wikipedia_title_from_query_response(data: dict[str, Any]) -> Optional[str]:
+def _wikipedia_title_from_query_response(
+    data: dict[str, Any], query: str = ""
+) -> Optional[str]:
     """Pick one Wikipedia page title for enrichment and citations.
 
     With ``generator=search`` and ``gsrlimit=1``, the API often returns a sub-article
     (e.g. ``Rick and Morty season 6``) ahead of the main ``Rick and Morty`` article for
     broad queries — then the whole graph faithfully summarizes the wrong page. We request
     multiple hits and prefer titles without ``season N`` / list-of patterns when possible.
+
+    When *query* is supplied the ranking also considers word overlap so that
+    the title most relevant to the user's question is chosen.
     """
     q = data.get("query")
     if not isinstance(q, dict):
@@ -280,7 +304,7 @@ def _wikipedia_title_from_query_response(data: dict[str, Any]) -> Optional[str]:
         return None
     if len(titles) == 1:
         return titles[0]
-    titles.sort(key=_wikipedia_title_rank)
+    titles.sort(key=lambda t: _wikipedia_title_rank(t, query))
     return titles[0]
 
 
@@ -291,12 +315,13 @@ async def _maybe_enrich_wikipedia_article(
     registry: RegistryClient,
     config: AgentConfig,
     log: Any,
+    query: str = "",
 ) -> None:
     if tool_id != WIKIPEDIA_LOOKUP_TOOL_ID:
         return
     if not getattr(config, "wikipedia_enrich_with_parse", True):
         return
-    title = _wikipedia_title_from_query_response(raw_data)
+    title = _wikipedia_title_from_query_response(raw_data, query=query)
     if not title:
         return
     max_chars = int(getattr(config, "wikipedia_max_article_chars", 100_000) or 0)
@@ -399,7 +424,9 @@ def _wikipedia_rest_desktop_url(data: dict[str, Any]) -> str:
     return ""
 
 
-def _mediawiki_api_page_url_title(data: dict[str, Any]) -> tuple[str, str]:
+def _mediawiki_api_page_url_title(
+    data: dict[str, Any], query: str = ""
+) -> tuple[str, str]:
     """URL + title for the same primary page chosen for Wikipedia enrichment."""
     q = data.get("query")
     if not isinstance(q, dict):
@@ -407,7 +434,7 @@ def _mediawiki_api_page_url_title(data: dict[str, Any]) -> tuple[str, str]:
     pages = q.get("pages")
     if not isinstance(pages, dict) or not pages:
         return "", ""
-    pick = _wikipedia_title_from_query_response(data)
+    pick = _wikipedia_title_from_query_response(data, query=query)
     if not pick:
         return "", ""
     for row in pages.values():
@@ -421,9 +448,10 @@ def _mediawiki_api_page_url_title(data: dict[str, Any]) -> tuple[str, str]:
 
 
 def _source_from_data(
-    data: dict[str, Any], tool_id: str, bind_name: Optional[str]
+    data: dict[str, Any], tool_id: str, bind_name: Optional[str],
+    query: str = "",
 ) -> dict[str, str]:
-    mw_url, mw_title = _mediawiki_api_page_url_title(data)
+    mw_url, mw_title = _mediawiki_api_page_url_title(data, query=query)
     url = str(
         data.get("url")
         or data.get("link")
@@ -636,6 +664,7 @@ class ToolDiscoveryTool(BaseTool):
                     registry=self._registry,
                     config=self._config,
                     log=log,
+                    query=inp.query,
                 )
                 success = True
             except Exception as exc:
@@ -688,7 +717,8 @@ class ToolDiscoveryTool(BaseTool):
             if success:
                 wrapped = _wrap_tool_data(raw_data, tool_id, True)
                 src = _source_from_data(
-                    raw_data, tool_id, bind_info.get("name") if bind_info else None
+                    raw_data, tool_id, bind_info.get("name") if bind_info else None,
+                    query=inp.query,
                 )
                 res = ToolDiscoveryResult(
                     success=True,

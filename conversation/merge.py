@@ -56,6 +56,7 @@ def build_engine_input(
     client_session_id: Optional[str] = None,
     constraints_patch: Optional[dict[str, Any]] = None,
     conversation_intent: str = "new_query",
+    rewritten_query: Optional[str] = None,
 ) -> dict[str, Any]:
     """Merge durable snapshot + new user text into a dict compatible with ``ResearchState``.
 
@@ -63,6 +64,11 @@ def build_engine_input(
     researcher↔critic loop has a full ``max_iterations`` budget. For ``new_query``, prior
     research artifacts from the snapshot are cleared so the researcher is not steered by stale
     gaps or findings from an unrelated question.
+
+    When *rewritten_query* is provided (coreference-resolved version of *user_message*),
+    it is used as the ``query`` field so the researcher and downstream nodes receive an
+    unambiguous query.  The original *user_message* is still appended to the ``messages``
+    list so the conversation transcript remains faithful to what the user actually typed.
     """
     snap = snapshot or {}
     constraints = merge_constraint_dicts(dict(snap.get("constraints") or {}), constraints_patch)
@@ -90,7 +96,7 @@ def build_engine_input(
         gaps = list(snap.get("gaps") or [])
 
     return {
-        "query": user_message,
+        "query": rewritten_query or user_message,
         "trace_id": trace_id,
         "session_id": session_id,
         "client_session_id": client_session_id,

@@ -36,20 +36,30 @@ class IntentClassifier:
         self.confidence_threshold = confidence_threshold
 
     async def classify(
-        self, user_message: str, *, has_prior_synthesis: bool
+        self,
+        user_message: str,
+        *,
+        has_prior_synthesis: bool,
+        prior_summary: str = "",
     ) -> IntentResult:
         if self._llm is None:
             return IntentResult(intent="new_query", confidence=1.0, rationale="no_llm_default")
 
-        hint = (
-            "The user already has a prior research synthesis in this session."
-            if has_prior_synthesis
-            else "This may be the first substantive turn in the session."
-        )
+        if has_prior_synthesis:
+            hint = "The user already has a prior research synthesis in this session."
+            if prior_summary:
+                hint += (
+                    f" Prior answer (first 300 chars): {prior_summary[:300]}"
+                )
+        else:
+            hint = "This may be the first substantive turn in the session."
         sys = (
             "Classify the latest user message for a research assistant. "
             "Return JSON fields intent (new_query|refinement|reformat|meta_question), "
             "confidence 0-1, optional rationale. "
+            "If the message is clearly a follow-up question about the same topic as the "
+            "prior answer (e.g. asking for more details, related facts, or using pronouns "
+            "that refer to entities in the prior answer), classify as 'refinement'. "
             f"Context: {hint}"
         )
         runnable = self._llm.with_structured_output(_LLMIntentSchema)
