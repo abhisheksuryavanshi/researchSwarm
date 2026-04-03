@@ -9,7 +9,7 @@ from agents.context import GraphContext
 from agents.nodes.researcher import researcher_node
 from agents.response_models import ToolSelectionResponse
 from agents.state import merge_graph_defaults
-from agents.tracing import truncate_for_trace
+from agents.tracing import trace_id_for_langfuse, truncate_for_trace
 from tests.conftest import FakeStructuredLLM
 
 
@@ -33,6 +33,17 @@ async def test_logs_contain_correlation_ids(mock_registry_client, agent_config):
     assert state.get("client_session_id") == "obs"
     assert "obs" in blob
     assert "researcher" in blob
+
+
+def test_trace_id_for_langfuse_strips_uuid_hyphens():
+    u = "8e06523c-9f9b-455e-84f6-5d25aa3f4f68"
+    assert trace_id_for_langfuse(u) == "8e06523c9f9b455e84f65d25aa3f4f68"
+
+
+def test_trace_id_for_langfuse_hashes_non_uuid():
+    out = trace_id_for_langfuse("not-a-uuid")
+    assert len(out) == 32
+    assert all(c in "0123456789abcdef" for c in out)
 
 
 def test_truncate_for_trace_empty_and_over_limit():
@@ -117,4 +128,7 @@ def test_emit_critic_route_span_calls_langfuse_when_enabled(monkeypatch):
     call_kw = mock_client.start_observation.call_args.kwargs
     assert call_kw.get("name") == "route_after_critic"
     assert call_kw.get("as_type") == "span"
+    tc = call_kw.get("trace_context")
+    assert tc is not None
+    assert tc.trace_id == trace_id_for_langfuse(tid)
     mock_span.end.assert_called_once()

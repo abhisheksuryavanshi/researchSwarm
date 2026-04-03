@@ -1,0 +1,56 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+/* Dark-mode-first design tokens */
+:root {
+  color-scheme: dark;
+  --rs-bg: #0c0d10;
+  --rs-surface: #14151c;
+  --rs-surface-elevated: #1a1b24;
+  --rs-border: #2a2c38;
+  --rs-text: #e4e6eb;
+  --rs-text-muted: #9ca3af;
+  --rs-accent: #818cf8;
+  --rs-accent-muted: rgba(129, 140, 248, 0.15);
+  --rs-danger: #f87171;
+  --rs-warning: #fbbf24;
+  --rs-success: #34d399;
+  --rs-radius-sm: 0.25rem;
+  --rs-radius-md: 0.5rem;
+  --rs-radius-lg: 0.75rem;
+  --rs-space-1: 0.25rem;
+  --rs-space-2: 0.5rem;
+  --rs-space-3: 0.75rem;
+  --rs-space-4: 1rem;
+  --rs-space-6: 1.5rem;
+  --rs-font-sans: ui-sans-serif, system-ui, sans-serif;
+  --rs-font-mono: ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--rs-font-sans);
+  background: var(--rs-bg);
+  color: var(--rs-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100%;
+}
+
+/* Assistant markdown: readable on dark surface */
+.prose-chat {
+  --tw-prose-body: var(--rs-text);
+  --tw-prose-headings: var(--rs-text);
+  --tw-prose-links: var(--rs-accent);
+  --tw-prose-bold: var(--rs-text);
+  --tw-prose-code: var(--rs-text);
+  --tw-prose-pre-bg: var(--rs-surface-elevated);
+}

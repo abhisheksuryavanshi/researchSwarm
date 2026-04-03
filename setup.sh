@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Local setup for researchSwarm: checks deps, env file, installs packages,
-# starts MySQL (Docker Compose) and Redis (named container), migrates, seeds.
+# starts MySQL (Docker Compose) and Redis (named container), migrates, seeds,
+# optionally starts the API (Uvicorn) and operator web UI (Vite in web/).
 # Idempotent: safe to run multiple times.
 set -euo pipefail
 
@@ -106,13 +107,14 @@ else
 fi
 ok "Registry seed completed (python -m registry.seed)"
 
+LOG_DIR="${ROOT}/logs"
+mkdir -p "$LOG_DIR"
+
 # --- Optional: start API if nothing listens on 8000 ---
 if command -v curl >/dev/null 2>&1; then
   if curl -sf -o /dev/null "http://127.0.0.1:8000/openapi.json" 2>/dev/null; then
     ok "API already responding at http://127.0.0.1:8000 — not starting another Uvicorn"
   else
-    LOG_DIR="${ROOT}/logs"
-    mkdir -p "$LOG_DIR"
     LOG_FILE="${LOG_DIR}/uvicorn.log"
     PID_FILE="${LOG_DIR}/uvicorn.pid"
     if [[ "${RUN[0]}" == "uv" ]]; then
@@ -133,7 +135,33 @@ else
   fi
 fi
 
+# --- Optional: operator web UI (Vite) in web/ ---
+if [[ -f "$ROOT/web/package.json" ]]; then
+  need_cmd npm
+  (cd "$ROOT/web" && npm install)
+  ok "npm install in web/ completed"
+  if command -v curl >/dev/null 2>&1; then
+    if curl -sf -o /dev/null "http://127.0.0.1:5173/" 2>/dev/null; then
+      ok "Frontend already responding at http://127.0.0.1:5173 — not starting another Vite"
+    else
+      VITE_LOG="${LOG_DIR}/vite.log"
+      VITE_PID="${LOG_DIR}/vite.pid"
+      pushd "$ROOT/web" >/dev/null
+      nohup npm run dev -- --host 0.0.0.0 --port 5173 >>"$VITE_LOG" 2>&1 &
+      echo $! >"$VITE_PID"
+      popd >/dev/null
+      ok "Started Vite in background (PID $(cat "$VITE_PID"), log $VITE_LOG)"
+      warn "Stop frontend with: kill \$(cat $VITE_PID)  # when you are done"
+    fi
+  else
+    warn "curl not installed; start the frontend manually:"
+    echo "    cd web && npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+  fi
+else
+  ok "No web/package.json — skipping operator UI"
+fi
+
 echo ""
-ok "Setup finished. Open http://127.0.0.1:8000/docs when Uvicorn is running."
-echo "⚠️  TODO: Set GOOGLE_API_KEY in .env for live Gemini calls."
+ok "Setup finished. API: http://127.0.0.1:8000/docs · UI: http://127.0.0.1:5173"
+echo "⚠️  TODO: Set GROQ_API_KEY in .env for live Groq LLM calls (or LLM_PROVIDER=google + GOOGLE_API_KEY for Gemini)."
 echo "⚠️  TODO: Add CONVERSATION_* vars to .env if you rely on session APIs; see SETUP.md."

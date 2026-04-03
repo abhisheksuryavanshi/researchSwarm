@@ -6,13 +6,17 @@ from agents.config import AgentConfig
 
 def test_agent_config_defaults():
     c = AgentConfig.model_validate({})
-    assert c.llm_model == "gemini-2.5-flash-lite"
+    assert c.llm_provider == "groq"
+    assert c.llm_model == "llama-3.1-8b-instant"
+    assert c.ollama_base_url == "http://localhost:11434"
     assert c.llm_temperature == 0.1
     assert c.llm_timeout_seconds == 30
     assert c.llm_max_retries == 3
     assert c.llm_retries_enabled is False
     assert c.max_iterations == 3
     assert c.graph_timeout_seconds == 60
+    assert c.wikipedia_enrich_with_parse is True
+    assert c.wikipedia_max_article_chars == 100_000
 
 
 def test_llm_retries_enabled_uses_max_retries(monkeypatch):

@@ -181,6 +181,7 @@ class ConversationCoordinator:
                 session_id,
                 client_session_id=client_session_id,
                 constraints_patch=constraints_patch,
+                conversation_intent=intent.intent,
             )
 
             if plan.mode == "clarify_only":

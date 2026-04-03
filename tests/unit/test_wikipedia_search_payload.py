@@ -1,6 +1,11 @@
 """Wikipedia tool payload: gsrsearch normalization for MediaWiki generator=search."""
 
-from agents.tools.discovery import _simplify_for_wikipedia_search, build_tool_payload
+from agents.tools.discovery import (
+    _html_to_plaintext,
+    _simplify_for_wikipedia_search,
+    _wikipedia_title_from_query_response,
+    build_tool_payload,
+)
 
 
 def test_simplify_wh_question_strips_boilerplate():
@@ -28,3 +33,27 @@ def test_build_tool_payload_gsrsearch_uses_simplified_search():
     )
     assert p["gsrsearch"] == "capital of France"
     assert p["action"] == "query"
+
+
+def test_html_to_plaintext_strips_tags_and_script():
+    html = (
+        '<script>alert(1)</script><style>.x{}</style>'
+        '<p>Hello <b>world</b> &amp; friends.</p>'
+    )
+    assert _html_to_plaintext(html) == "Hello world & friends."
+
+
+def test_wikipedia_title_from_query_response():
+    assert (
+        _wikipedia_title_from_query_response(
+            {"query": {"pages": {"1": {"title": "Paris", "extract": "x"}}}}
+        )
+        == "Paris"
+    )
+    assert _wikipedia_title_from_query_response({"query": {}}) is None
+    assert (
+        _wikipedia_title_from_query_response(
+            {"query": {"pages": {"2": {"title": "X", "missing": True}}}}
+        )
+        is None
+    )

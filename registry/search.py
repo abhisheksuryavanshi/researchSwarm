@@ -16,7 +16,7 @@ async def search_tools(
     Returns a sorted list of matched tools with essential metadata.
     """
     stmt = select(Tool).where(
-        Tool.status.notin_(["deprecated", "unhealthy"])
+        Tool.status.notin_(["deprecated", "unhealthy", "inactive"])
     )
 
     if capability:

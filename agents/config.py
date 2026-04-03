@@ -13,8 +13,8 @@ class AgentConfig(BaseSettings):
         extra="ignore",
     )
 
-    llm_provider: str = "google"
-    llm_model: str = "gemini-2.5-flash-lite"
+    llm_provider: str = "groq"
+    llm_model: str = "llama-3.1-8b-instant"
     llm_temperature: float = 0.1
     llm_timeout_seconds: int = 30
     llm_max_retries: int = 3
@@ -32,6 +32,8 @@ class AgentConfig(BaseSettings):
     tool_invocation_timeout_seconds: int = 30
     max_tool_fallback_attempts: int = 3
     google_api_key: Optional[str] = None
+    groq_api_key: Optional[str] = None
+    ollama_base_url: str = "http://localhost:11434"
     langfuse_enabled: bool = True
     langfuse_host: str = "http://localhost:3000"
     langfuse_public_key: Optional[str] = None
@@ -43,6 +45,18 @@ class AgentConfig(BaseSettings):
     trace_excerpt_max_chars: int = Field(
         default=2048,
         description="Max characters for excerpts sent to external traces (e.g. Langfuse).",
+    )
+    wikipedia_enrich_with_parse: bool = Field(
+        default=True,
+        description=(
+            "After a successful wikipedia-lookup-v1 call, fetch full article HTML via "
+            "action=parse, strip to plain text, and attach as enriched_article_plaintext."
+        ),
+    )
+    wikipedia_max_article_chars: int = Field(
+        default=100_000,
+        ge=0,
+        description="Max plain-text characters to keep from parse enrichment (0 = no limit).",
     )
 
     @field_validator("llm_max_retries")

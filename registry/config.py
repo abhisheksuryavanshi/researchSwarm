@@ -17,6 +17,13 @@ class Settings(BaseSettings):
         default="logs",
         description="Directory for backend.jsonl; relative to cwd unless absolute.",
     )
+    cors_origins: str = Field(
+        default=(
+            "http://localhost:5173,http://127.0.0.1:5173,"
+            "http://localhost:4173,http://127.0.0.1:4173"
+        ),
+        description="Comma-separated allowed browser origins for CORS.",
+    )
 
 
 settings = Settings()

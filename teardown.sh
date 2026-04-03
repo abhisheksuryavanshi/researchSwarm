@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tear down local resources started by setup.sh: background Uvicorn, Redis container,
-# Docker Compose MySQL (and optionally Compose volumes / Redis container removal).
+# Tear down local resources started by setup.sh: background Uvicorn, Vite (operator UI),
+# Redis container, Docker Compose MySQL (and optionally Compose volumes / Redis removal).
 # Does not remove .venv, .env, or Python deps.
 set -euo pipefail
 
@@ -15,7 +15,7 @@ ok() { echo "✅ $*"; }
 warn() { echo "⚠️  $*"; }
 
 usage() {
-  echo "Tear down local resources started by setup.sh (Uvicorn, Redis, Compose MySQL)."
+  echo "Tear down local resources started by setup.sh (Uvicorn, Vite, Redis, Compose MySQL)."
   echo ""
   echo "Usage: $0 [options]"
   echo "  --volumes, -v     docker compose down -v (wipes MySQL named volume)"
@@ -71,6 +71,25 @@ if [[ -f "$PID_FILE" ]]; then
   rm -f "$LEGACY_PID"
 else
   warn "No logs/uvicorn.pid (or legacy .uvicorn-setup.pid) — if Uvicorn is running, stop it manually"
+fi
+
+# --- Vite (operator web UI) started by setup.sh ---
+VITE_PID_FILE="${ROOT}/logs/vite.pid"
+if [[ -f "$VITE_PID_FILE" ]]; then
+  vpid="$(cat "$VITE_PID_FILE" 2>/dev/null || true)"
+  if [[ -n "${vpid:-}" ]] && kill -0 "$vpid" 2>/dev/null; then
+    kill -TERM "$vpid" 2>/dev/null || true
+    sleep 0.5
+    if kill -0 "$vpid" 2>/dev/null; then
+      kill -KILL "$vpid" 2>/dev/null || true
+    fi
+    ok "Stopped Vite (PID $vpid from $VITE_PID_FILE)"
+  else
+    warn "Stale or empty Vite PID file (PID was: ${vpid:-empty}) — $VITE_PID_FILE"
+  fi
+  rm -f "$VITE_PID_FILE"
+else
+  warn "No logs/vite.pid — if the operator UI dev server is running, stop it manually"
 fi
 
 # --- Redis (standalone container from setup.sh) ---

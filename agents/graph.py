@@ -5,7 +5,10 @@ from typing import Optional
 
 import structlog
 import structlog.contextvars
+from langchain_core.language_models import BaseChatModel
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
+from langchain_ollama import ChatOllama
 from langgraph.graph import END, START, StateGraph
 
 from agents.config import AgentConfig
@@ -33,17 +36,41 @@ _run_lock = asyncio.Lock()
 _busy = False
 
 
-def create_default_llm(config: AgentConfig) -> ChatGoogleGenerativeAI:
+def create_default_llm(config: AgentConfig) -> BaseChatModel:
     effective_retries = config.llm_max_retries if config.llm_retries_enabled else 0
-    kwargs: dict = {
-        "model": config.llm_model,
-        "temperature": config.llm_temperature,
-        "timeout": config.llm_timeout_seconds,
-        "max_retries": effective_retries,
-    }
-    if config.google_api_key:
-        kwargs["google_api_key"] = config.google_api_key
-    return ChatGoogleGenerativeAI(**kwargs)
+    provider = (config.llm_provider or "groq").strip().lower()
+    if provider == "groq":
+        groq_kwargs: dict = {
+            "model": config.llm_model,
+            "temperature": config.llm_temperature,
+            "timeout": config.llm_timeout_seconds,
+            "max_retries": effective_retries,
+        }
+        if config.groq_api_key:
+            groq_kwargs["groq_api_key"] = config.groq_api_key
+        return ChatGroq(**groq_kwargs)
+    if provider == "google":
+        google_kwargs: dict = {
+            "model": config.llm_model,
+            "temperature": config.llm_temperature,
+            "timeout": config.llm_timeout_seconds,
+            "max_retries": effective_retries,
+        }
+        if config.google_api_key:
+            google_kwargs["google_api_key"] = config.google_api_key
+        return ChatGoogleGenerativeAI(**google_kwargs)
+    if provider == "ollama":
+        timeout = float(config.llm_timeout_seconds)
+        return ChatOllama(
+            model=config.llm_model,
+            base_url=config.ollama_base_url,
+            temperature=config.llm_temperature,
+            client_kwargs={"timeout": timeout},
+        )
+    raise ValueError(
+        f"Unsupported llm_provider={config.llm_provider!r}; "
+        "use 'groq', 'google', or 'ollama'."
+    )
 
 
 def default_graph_context(config: Optional[AgentConfig] = None) -> GraphContext:

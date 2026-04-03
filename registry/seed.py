@@ -17,13 +17,15 @@ from registry.models import Tool, ToolCapability
 logger = structlog.get_logger()
 
 # MediaWiki Action API: on-wiki search resolves natural language to an article, then returns
-# intro extract + URL (unlike REST /page/summary/{title}, which requires an exact title).
+# extract + URL. exintro=0 allows TextExtracts to include content beyond the first section
+# where supported; the agent layer may also merge a full plain-text parse (see AgentConfig).
 WIKIPEDIA_LOOKUP_TOOL: dict = {
     "tool_id": "wikipedia-lookup-v1",
     "name": "Wikipedia Lookup",
     "description": (
         "Searches English Wikipedia for the user question or topic and returns the top "
-        "matching article's lead extract and page URL (works for full questions, not only titles)."
+        "matching article extract, page URL, and (downstream) extended plain text from the "
+        "full article when enrichment is enabled."
     ),
     "capabilities": ["general_knowledge", "encyclopedia"],
     "input_schema": {
@@ -40,7 +42,7 @@ WIKIPEDIA_LOOKUP_TOOL: dict = {
             "gsrnamespace": {"type": "integer", "default": 0},
             "prop": {"type": "string", "default": "extracts|info"},
             "inprop": {"type": "string", "default": "url"},
-            "exintro": {"type": "integer", "default": 1},
+            "exintro": {"type": "integer", "default": 0},
             "explaintext": {"type": "integer", "default": 1},
         },
         "required": ["gsrsearch"],
@@ -66,20 +68,54 @@ WIKIPEDIA_LOOKUP_TOOL: dict = {
 SEED_TOOLS = [
     {
         "tool_id": "serp-web-search-v1",
-        "name": "SerpAPI Web Search",
+        "name": "Web Search",
         "description": (
-            "Performs web searches using the SerpAPI service, returning organic results, "
-            "knowledge graphs, and answer boxes from major search engines."
+            "Performs web searches using the DuckDuckGo Instant Answer API, returning "
+            "abstracts, related topics, and knowledge snippets from across the web."
         ),
         "capabilities": ["web_search", "general_knowledge"],
         "input_schema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Search query string"},
-                "num_results": {
-                    "type": "integer",
-                    "description": "Number of results",
-                    "default": 10,
+                "q": {"type": "string", "description": "Search query string"},
+                "format": {"type": "string", "default": "json"},
+                "no_html": {"type": "integer", "default": 1},
+                "skip_disambig": {"type": "integer", "default": 1},
+            },
+            "required": ["q"],
+        },
+        "output_schema": {
+            "type": "object",
+            "properties": {
+                "AbstractText": {"type": "string"},
+                "AbstractSource": {"type": "string"},
+                "AbstractURL": {"type": "string"},
+                "Heading": {"type": "string"},
+                "Answer": {"type": "string"},
+                "RelatedTopics": {"type": "array", "items": {"type": "object"}},
+            },
+        },
+        "endpoint": "https://api.duckduckgo.com/",
+        "version": "1.0.0",
+        "method": "GET",
+    },
+    {
+        "tool_id": "arxiv-paper-search-v1",
+        "name": "Academic Paper Search",
+        "description": (
+            "Searches academic papers via the Semantic Scholar API by topic, author, or "
+            "keyword, returning titles, abstracts, authors, and publication metadata. "
+            "Covers ArXiv and major academic publishers."
+        ),
+        "capabilities": ["academic_papers", "arxiv"],
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Search query for papers"},
+                "limit": {"type": "integer", "default": 5},
+                "fields": {
+                    "type": "string",
+                    "default": "title,abstract,url,year,authors",
                 },
             },
             "required": ["query"],
@@ -87,84 +123,63 @@ SEED_TOOLS = [
         "output_schema": {
             "type": "object",
             "properties": {
-                "results": {"type": "array", "items": {"type": "object"}},
-                "total_results": {"type": "integer"},
+                "total": {"type": "integer"},
+                "data": {"type": "array", "items": {"type": "object"}},
             },
         },
-        "endpoint": "http://tools:8001/serp",
+        "endpoint": "https://api.semanticscholar.org/graph/v1/paper/search",
         "version": "1.0.0",
-        "method": "POST",
-        "health_check": "/health",
-    },
-    {
-        "tool_id": "arxiv-paper-search-v1",
-        "name": "ArXiv Paper Search",
-        "description": (
-            "Searches the ArXiv academic paper repository for research papers by topic, "
-            "author, or keyword, returning abstracts and metadata."
-        ),
-        "capabilities": ["academic_papers", "arxiv"],
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query for papers"},
-                "max_results": {"type": "integer", "default": 5},
-            },
-            "required": ["query"],
-        },
-        "output_schema": {
-            "type": "object",
-            "properties": {
-                "papers": {"type": "array", "items": {"type": "object"}},
-            },
-        },
-        "endpoint": "http://tools:8001/arxiv",
-        "version": "1.0.0",
-        "method": "POST",
-        "health_check": "/health",
+        "method": "GET",
     },
     {
         "tool_id": "github-search-v1",
         "name": "GitHub Repository Search",
         "description": (
-            "Searches GitHub repositories by name, topic, or language, returning "
-            "repository metadata including stars, forks, and descriptions."
+            "Searches GitHub repositories via the public GitHub API by name, topic, or "
+            "language, returning repository metadata including stars, forks, and descriptions."
         ),
         "capabilities": ["code_search", "github", "repositories"],
         "input_schema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Search query"},
-                "language": {"type": "string", "description": "Filter by language"},
+                "q": {"type": "string", "description": "Search query"},
+                "per_page": {
+                    "type": "integer",
+                    "description": "Number of results per page",
+                    "default": 5,
+                },
             },
-            "required": ["query"],
+            "required": ["q"],
         },
         "output_schema": {
             "type": "object",
             "properties": {
-                "repositories": {"type": "array", "items": {"type": "object"}},
+                "total_count": {"type": "integer"},
+                "items": {"type": "array", "items": {"type": "object"}},
             },
         },
-        "endpoint": "http://tools:8001/github",
+        "endpoint": "https://api.github.com/search/repositories",
         "version": "1.0.0",
-        "method": "POST",
-        "health_check": "/health",
+        "method": "GET",
     },
     WIKIPEDIA_LOOKUP_TOOL,
     {
         "tool_id": "calculator-v1",
         "name": "Calculator",
         "description": (
-            "Performs mathematical calculations including arithmetic, algebra, and "
-            "basic statistical operations on numeric inputs."
+            "Evaluates mathematical expressions using the mathjs API. Supports "
+            "arithmetic, algebra, trigonometry, and basic statistics."
         ),
         "capabilities": ["math", "calculation"],
         "input_schema": {
             "type": "object",
             "properties": {
-                "expression": {"type": "string", "description": "Mathematical expression"},
+                "expr": {
+                    "type": "string",
+                    "description": "Mathematical expression to evaluate (e.g. '2+3', 'sqrt(144)')",
+                },
             },
-            "required": ["expression"],
+            "required": ["expr"],
         },
         "output_schema": {
             "type": "object",
@@ -172,16 +187,17 @@ SEED_TOOLS = [
                 "result": {"type": "number"},
             },
         },
-        "endpoint": "http://tools:8001/calculator",
+        "endpoint": "https://api.mathjs.org/v4/",
         "version": "1.0.0",
-        "method": "POST",
+        "method": "GET",
     },
     {
         "tool_id": "url-scraper-v1",
         "name": "URL Scraper",
         "description": (
             "Scrapes web pages at specified URLs and extracts clean text content, "
-            "removing HTML tags and scripts for content extraction."
+            "removing HTML tags and scripts for content extraction. "
+            "Currently inactive — requires a dedicated scraping microservice."
         ),
         "capabilities": ["web_scraping", "content_extraction"],
         "input_schema": {
@@ -203,13 +219,15 @@ SEED_TOOLS = [
         "version": "1.0.0",
         "method": "POST",
         "health_check": "/health",
+        "status": "inactive",
     },
     {
         "tool_id": "sec-filing-parser-v1",
         "name": "SEC Filing Parser",
         "description": (
             "Parses SEC EDGAR filings and extracts structured financial data including "
-            "income statements, balance sheets, and cash flow statements."
+            "income statements, balance sheets, and cash flow statements. "
+            "Currently inactive — requires a dedicated SEC parsing microservice."
         ),
         "capabilities": ["financial_data", "sec_filings", "document_parsing"],
         "input_schema": {
@@ -231,24 +249,38 @@ SEED_TOOLS = [
         "version": "1.0.0",
         "method": "POST",
         "health_check": "/health",
+        "status": "inactive",
     },
 ]
 
 
-async def _sync_wikipedia_lookup_tool(session: AsyncSession) -> None:
-    """Point existing installs at the public Wikipedia REST API (idempotent)."""
-    res = await session.execute(
-        select(Tool).where(Tool.tool_id == WIKIPEDIA_LOOKUP_TOOL["tool_id"])
-    )
-    row = res.scalar_one_or_none()
-    if row is None:
-        return
+async def _sync_existing_tools(session: AsyncSession) -> None:
+    """Update existing tool rows to match current seed definitions (idempotent).
+
+    Ensures endpoint, method, schemas, description, and status stay in sync
+    with the canonical SEED_TOOLS list even for rows that were inserted by an
+    earlier version of the seed script.
+    """
     now = datetime.now(timezone.utc)
-    row.endpoint = WIKIPEDIA_LOOKUP_TOOL["endpoint"]
-    row.method = WIKIPEDIA_LOOKUP_TOOL["method"]
-    row.input_schema = WIKIPEDIA_LOOKUP_TOOL["input_schema"]
-    row.output_schema = WIKIPEDIA_LOOKUP_TOOL["output_schema"]
-    row.updated_at = now
+    for tool_data in SEED_TOOLS:
+        res = await session.execute(
+            select(Tool).where(Tool.tool_id == tool_data["tool_id"])
+        )
+        row = res.scalar_one_or_none()
+        if row is None:
+            continue
+        row.name = tool_data["name"]
+        row.description = tool_data["description"]
+        row.endpoint = tool_data["endpoint"]
+        row.method = tool_data.get("method", "POST")
+        row.input_schema = tool_data["input_schema"]
+        row.output_schema = tool_data["output_schema"]
+        row.health_check = tool_data.get("health_check")
+        if "status" in tool_data:
+            row.status = tool_data["status"]
+        elif row.status == "inactive":
+            row.status = "active"
+        row.updated_at = now
 
 
 async def seed(session: Optional[AsyncSession] = None) -> int:
@@ -291,7 +323,7 @@ async def seed(session: Optional[AsyncSession] = None) -> int:
             session.add(tool)
             count += 1
 
-        await _sync_wikipedia_lookup_tool(session)
+        await _sync_existing_tools(session)
         await session.commit()
         return count
     except Exception:

@@ -4,6 +4,7 @@ import asyncio
 import json
 import re
 import time
+from html import unescape
 from typing import Any, Optional, Type
 
 from langchain_core.language_models import BaseChatModel
@@ -25,9 +26,9 @@ from agents.tracing import (
     get_logger,
     is_langfuse_run_enabled,
     langfuse_run_metadata_dict,
+    trace_id_for_langfuse,
     truncate_for_trace,
 )
-
 
 _WH_WORD = re.compile(
     r"^\s*(?:what|who|where|when|why|how)\s+"
@@ -217,12 +218,101 @@ def _search_summary(results: list[dict[str, Any]]) -> str:
     lines = []
     for r in results:
         caps = ", ".join(r.get("capabilities") or [])
+        desc = str(r.get("description") or "")
+        if len(desc) > 2000:
+            desc = desc[:2000] + "…"
         lines.append(
             f"- tool_id={r.get('tool_id')} name={r.get('name')} "
             f"capabilities=[{caps}] avg_latency_ms={r.get('avg_latency_ms')} "
-            f"desc={r.get('description', '')[:200]}"
+            f"desc={desc}"
         )
     return "\n".join(lines) if lines else "(no tools)"
+
+
+WIKIPEDIA_LOOKUP_TOOL_ID = "wikipedia-lookup-v1"
+_WIKIPEDIA_PARSE_API = "https://en.wikipedia.org/w/api.php"
+
+
+def _html_to_plaintext(html: str) -> str:
+    if not html:
+        return ""
+    s = re.sub(r"(?is)<script[^>]*>.*?</script>", " ", html)
+    s = re.sub(r"(?is)<style[^>]*>.*?</style>", " ", s)
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = unescape(s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _wikipedia_title_from_query_response(data: dict[str, Any]) -> Optional[str]:
+    q = data.get("query")
+    if not isinstance(q, dict):
+        return None
+    pages = q.get("pages")
+    if not isinstance(pages, dict) or not pages:
+        return None
+    row = next(iter(pages.values()), None)
+    if not isinstance(row, dict):
+        return None
+    if row.get("missing"):
+        return None
+    title = row.get("title")
+    if not title:
+        return None
+    return str(title)
+
+
+async def _maybe_enrich_wikipedia_article(
+    raw_data: dict[str, Any],
+    *,
+    tool_id: str,
+    registry: RegistryClient,
+    config: AgentConfig,
+    log: Any,
+) -> None:
+    if tool_id != WIKIPEDIA_LOOKUP_TOOL_ID:
+        return
+    if not getattr(config, "wikipedia_enrich_with_parse", True):
+        return
+    title = _wikipedia_title_from_query_response(raw_data)
+    if not title:
+        return
+    max_chars = int(getattr(config, "wikipedia_max_article_chars", 100_000) or 0)
+    timeout_s = float(getattr(config, "tool_invocation_timeout_seconds", 30) or 30)
+    try:
+        parsed = await asyncio.wait_for(
+            registry.invoke(
+                _WIKIPEDIA_PARSE_API,
+                "GET",
+                {
+                    "action": "parse",
+                    "page": title,
+                    "prop": "text",
+                    "format": "json",
+                    "formatversion": "2",
+                },
+            ),
+            timeout=timeout_s,
+        )
+    except Exception as exc:
+        await log.awarning(
+            "wikipedia_parse_enrich_failed",
+            title=title,
+            error=str(exc),
+        )
+        return
+    if not isinstance(parsed, dict):
+        return
+    parse_block = parsed.get("parse")
+    if not isinstance(parse_block, dict):
+        return
+    html = parse_block.get("text")
+    if not isinstance(html, str) or not html.strip():
+        return
+    plain = _html_to_plaintext(html)
+    if max_chars > 0 and len(plain) > max_chars:
+        plain = plain[:max_chars] + "\n\n...[article truncated for size]"
+    raw_data["enriched_article_plaintext"] = plain
 
 
 def _filter_results_by_constraints(
@@ -482,7 +572,9 @@ class ToolDiscoveryTool(BaseTool):
                         lf = get_client()
                         if lf:
                             span_obj = lf.start_observation(
-                                trace_context=TraceContext(trace_id=inp.trace_id),
+                                trace_context=TraceContext(
+                                    trace_id=trace_id_for_langfuse(inp.trace_id)
+                                ),
                                 name=f"tool:{tool_id}",
                                 as_type="tool",
                                 input=truncate_for_trace(
@@ -503,6 +595,13 @@ class ToolDiscoveryTool(BaseTool):
                         span_obj = None
                 out = await asyncio.wait_for(dyn.ainvoke(payload), timeout=timeout_s)
                 raw_data = out if isinstance(out, dict) else {"result": out}
+                await _maybe_enrich_wikipedia_article(
+                    raw_data,
+                    tool_id=tool_id,
+                    registry=self._registry,
+                    config=self._config,
+                    log=log,
+                )
                 success = True
             except Exception as exc:
                 err_msg = str(exc)
